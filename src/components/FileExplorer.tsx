@@ -101,7 +101,8 @@ interface FileTreeItemProps {
   onDelete: (file: ProjectFile) => void;
   onRename: (file: ProjectFile) => void;
   depth: number;
-  isOwner: boolean;
+  canManageFiles: boolean;
+  canEdit: boolean;
 }
 
 function FileTreeItem({
