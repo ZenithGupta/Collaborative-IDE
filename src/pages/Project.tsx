@@ -331,60 +331,13 @@ export default function Project() {
       </header>
 
       {/* Share Dialog */}
-      <Dialog open={showShareDialog} onOpenChange={setShowShareDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Share Project</DialogTitle>
-            <DialogDescription>
-              Share this room code with others to collaborate in real-time
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 mt-4">
-            <div className="space-y-2">
-              <Label>Room Code</Label>
-              <div className="flex gap-2">
-                <Input
-                  value={project.room_code || ''}
-                  readOnly
-                  className="font-mono text-lg tracking-widest"
-                />
-                <Button variant="outline" onClick={copyRoomCode}>
-                  {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Others can join using this code in the Dashboard → Join Room
-              </p>
-            </div>
-
-            {isOwner && (
-              <div className="space-y-2">
-                <Label>Room Password (optional)</Label>
-                <div className="flex gap-2">
-                  <Input
-                    type="password"
-                    placeholder={project.room_password ? '••••••••' : 'No password set'}
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                  />
-                  <Button 
-                    variant="outline" 
-                    onClick={() => updatePassword.mutate(newPassword)}
-                    disabled={updatePassword.isPending}
-                  >
-                    <Key className="h-4 w-4" />
-                  </Button>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {project.room_password 
-                    ? 'Password is required to join. Leave empty and click to remove.' 
-                    : 'Set a password to require it for joining'}
-                </p>
-              </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+      {project && (
+        <ShareProjectDialog
+          open={showShareDialog}
+          onOpenChange={setShowShareDialog}
+          project={project}
+        />
+      )}
 
       {/* Main workspace */}
       <div className="flex-1 overflow-hidden">
