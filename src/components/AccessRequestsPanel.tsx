@@ -78,18 +78,34 @@ export function AccessRequestsPanel({ projectId }: AccessRequestsPanelProps) {
   // Approve request
   const approveRequest = useMutation({
     mutationFn: async (request: AccessRequest) => {
-      // Update collaborator role
-      const { error: collabError } = await supabase
+      // Check if collaborator already exists
+      const { data: existing } = await supabase
         .from('project_collaborators')
-        .upsert({
-          project_id: request.project_id,
-          user_id: request.user_id,
-          role: request.requested_role,
-        }, {
-          onConflict: 'project_id,user_id'
-        });
+        .select('id')
+        .eq('project_id', request.project_id)
+        .eq('user_id', request.user_id)
+        .maybeSingle();
 
-      if (collabError) throw collabError;
+      if (existing) {
+        // Update existing collaborator role
+        const { error: updateError } = await supabase
+          .from('project_collaborators')
+          .update({ role: request.requested_role })
+          .eq('id', existing.id);
+
+        if (updateError) throw updateError;
+      } else {
+        // Insert new collaborator
+        const { error: insertError } = await supabase
+          .from('project_collaborators')
+          .insert({
+            project_id: request.project_id,
+            user_id: request.user_id,
+            role: request.requested_role,
+          });
+
+        if (insertError) throw insertError;
+      }
 
       // Update request status
       const { error: requestError } = await supabase
