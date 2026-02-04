@@ -438,7 +438,8 @@ export function FileExplorer({
             onDelete={(f) => deleteFile.mutate(f)}
             onRename={handleRename}
             depth={0}
-            isOwner={isOwner}
+            canManageFiles={canManageFiles}
+            canEdit={canEdit}
           />
         ))}
 
