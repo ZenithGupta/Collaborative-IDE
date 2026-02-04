@@ -449,7 +449,6 @@ export default function Project() {
                     canManageFiles={canManageFiles}
                     canEdit={canEdit}
                   />
-                  />
                 ) : (
                   <div className="p-3">
                     <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
