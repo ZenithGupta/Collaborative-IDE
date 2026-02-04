@@ -237,7 +237,11 @@ export default function Project() {
     }
   };
 
-  const isOwner = user?.id === project?.owner_id;
+  // Role-based permissions
+  const { isOwner, canEdit, canManageFiles, isLoading: roleLoading } = useCollaboratorRole({
+    projectId,
+    userId: user?.id,
+  });
 
   if (isLoading || filesLoading) {
     return (
