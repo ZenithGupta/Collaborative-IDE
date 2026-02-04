@@ -234,7 +234,8 @@ export function FileExplorer({
   files,
   selectedFileId,
   onFileSelect,
-  isOwner,
+  canManageFiles,
+  canEdit,
 }: FileExplorerProps) {
   const queryClient = useQueryClient();
   const [isCreating, setIsCreating] = useState<{ parentId: string | null; isFolder: boolean } | null>(null);
