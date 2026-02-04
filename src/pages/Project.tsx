@@ -241,10 +241,21 @@ export default function Project() {
   };
 
   // Role-based permissions
-  const { isOwner, canEdit, canManageFiles, isLoading: roleLoading } = useCollaboratorRole({
+  const { isOwner, canEdit, canManageFiles, role, isLoading: roleLoading } = useCollaboratorRole({
     projectId,
     userId: user?.id,
   });
+
+  // Get role display info
+  const getRoleInfo = () => {
+    if (isOwner) return { label: 'Owner', icon: Shield, color: 'text-primary' };
+    if (role === 'full_access') return { label: 'Full Access', icon: Shield, color: 'text-emerald-500' };
+    if (role === 'edit') return { label: 'Edit Mode', icon: Edit2, color: 'text-amber-500' };
+    if (role === 'view') return { label: 'View Only', icon: Eye, color: 'text-muted-foreground' };
+    return null;
+  };
+
+  const roleInfo = getRoleInfo();
 
   if (isLoading || filesLoading || roleLoading) {
     return (
