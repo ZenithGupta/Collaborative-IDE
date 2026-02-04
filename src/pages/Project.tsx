@@ -4,14 +4,15 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useRealtimeCode } from '@/hooks/useRealtimeCode';
+import { useProjectFiles } from '@/hooks/useProjectFiles';
 import Editor from '@monaco-editor/react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Dialog,
   DialogContent,
@@ -19,6 +20,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { FileExplorer, ProjectFile } from '@/components/FileExplorer';
+import { ActiveUsersPresence, ActiveUsersSidebar } from '@/components/ActiveUsersPresence';
 import {
   Code2,
   Play,
@@ -32,19 +35,11 @@ import {
   Globe,
   Lock,
   Key,
+  X,
+  FolderTree,
 } from 'lucide-react';
 import { toast } from 'sonner';
-
-const LANGUAGE_MAP: Record<string, string> = {
-  javascript: 'javascript',
-  typescript: 'typescript',
-  python: 'python',
-  cpp: 'cpp',
-  c: 'c',
-  java: 'java',
-  html: 'html',
-  css: 'css',
-};
+import { cn } from '@/lib/utils';
 
 export default function Project() {
   const { projectId } = useParams();
@@ -58,6 +53,9 @@ export default function Project() {
   const [copied, setCopied] = useState(false);
   const [showShareDialog, setShowShareDialog] = useState(false);
   const [newPassword, setNewPassword] = useState('');
+  const [selectedFile, setSelectedFile] = useState<ProjectFile | null>(null);
+  const [openTabs, setOpenTabs] = useState<ProjectFile[]>([]);
+  const [sidebarTab, setSidebarTab] = useState<'files' | 'users'>('files');
   const saveTimeoutRef = useRef<NodeJS.Timeout>();
 
   // Fetch project
@@ -76,39 +74,62 @@ export default function Project() {
     enabled: !!projectId,
   });
 
+  // Project files
+  const { files, isLoading: filesLoading, saveFileContent, getLanguageFromFile } = useProjectFiles({
+    projectId,
+  });
+
   // Handle remote code changes
   const handleRemoteCodeChange = useCallback((newCode: string) => {
     setCode(newCode);
   }, []);
 
-  // Real-time code sync
+  // Real-time code sync with file context
   const { activeUsers, broadcastCode } = useRealtimeCode({
     projectId,
+    currentFileId: selectedFile?.id || null,
+    currentFileName: selectedFile?.name || null,
     initialCode: code,
     onCodeChange: handleRemoteCodeChange,
   });
 
-  // Set initial code
+  // Set initial code from selected file
   useEffect(() => {
-    if (project?.code) {
+    if (selectedFile) {
+      setCode(selectedFile.content || '');
+    } else if (project?.code && files.length === 0) {
+      // Fallback to legacy single-file code
       setCode(project.code);
     }
-  }, [project?.code]);
+  }, [selectedFile, project?.code, files.length]);
 
-  // Save code mutation
-  const saveCode = useMutation({
-    mutationFn: async (newCode: string) => {
-      if (!projectId) return;
-      const { error } = await supabase
-        .from('projects')
-        .update({ code: newCode })
-        .eq('id', projectId);
-      if (error) throw error;
-    },
-    onError: () => {
-      toast.error('Failed to save');
-    },
-  });
+  // Handle file selection
+  const handleFileSelect = useCallback((file: ProjectFile) => {
+    // Save current file before switching
+    if (selectedFile && code !== selectedFile.content) {
+      saveFileContent(selectedFile.id, code);
+    }
+
+    setSelectedFile(file);
+    setCode(file.content || '');
+
+    // Add to open tabs if not already there
+    setOpenTabs((prev) => {
+      if (prev.find((t) => t.id === file.id)) return prev;
+      return [...prev, file];
+    });
+  }, [selectedFile, code, saveFileContent]);
+
+  // Close tab
+  const closeTab = useCallback((file: ProjectFile, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setOpenTabs((prev) => prev.filter((t) => t.id !== file.id));
+    
+    if (selectedFile?.id === file.id) {
+      const remaining = openTabs.filter((t) => t.id !== file.id);
+      setSelectedFile(remaining[remaining.length - 1] || null);
+    }
+  }, [selectedFile, openTabs]);
 
   // Handle code changes - broadcast and save
   const handleCodeChange = useCallback((value: string | undefined) => {
@@ -118,15 +139,17 @@ export default function Project() {
       // Broadcast to other users immediately
       broadcastCode(value);
       
-      // Debounce database save
+      // Debounce save
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
       }
       saveTimeoutRef.current = setTimeout(() => {
-        saveCode.mutate(value);
+        if (selectedFile) {
+          saveFileContent(selectedFile.id, value);
+        }
       }, 1000);
     }
-  }, [broadcastCode, saveCode]);
+  }, [broadcastCode, saveFileContent, selectedFile]);
 
   // Clean up timeout on unmount
   useEffect(() => {
@@ -182,8 +205,12 @@ export default function Project() {
     setOutput(['⏳ Executing code...']);
 
     try {
+      const language = selectedFile 
+        ? getLanguageFromFile(selectedFile.name)
+        : project?.language;
+
       const { data, error } = await supabase.functions.invoke('execute-code', {
-        body: { code, language: project?.language },
+        body: { code, language },
       });
 
       if (error) {
@@ -211,7 +238,7 @@ export default function Project() {
 
   const isOwner = user?.id === project?.owner_id;
 
-  if (isLoading) {
+  if (isLoading || filesLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -233,6 +260,10 @@ export default function Project() {
     );
   }
 
+  const currentLanguage = selectedFile 
+    ? getLanguageFromFile(selectedFile.name)
+    : project.language;
+
   return (
     <div className="flex flex-col h-screen bg-background">
       {/* Header */}
@@ -246,39 +277,21 @@ export default function Project() {
               <Code2 className="h-4 w-4 text-primary-foreground" />
             </div>
             <span className="font-semibold">{project.name}</span>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground">
-              {project.language}
-            </span>
+            {selectedFile && (
+              <span className="text-xs px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground">
+                {selectedFile.name}
+              </span>
+            )}
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Active users */}
-          {activeUsers.length > 0 && (
-            <div className="flex items-center gap-1 mr-2">
-              <Users className="h-4 w-4 text-muted-foreground" />
-              <div className="flex -space-x-2">
-                {activeUsers.slice(0, 4).map((u) => (
-                  <Tooltip key={u.id}>
-                    <TooltipTrigger asChild>
-                      <Avatar className="h-7 w-7 border-2 border-background">
-                        <AvatarImage src={u.avatar_url} />
-                        <AvatarFallback className="bg-primary/20 text-primary text-xs">
-                          {u.username[0]?.toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                    </TooltipTrigger>
-                    <TooltipContent>{u.username}</TooltipContent>
-                  </Tooltip>
-                ))}
-                {activeUsers.length > 4 && (
-                  <div className="h-7 w-7 rounded-full bg-muted flex items-center justify-center text-xs border-2 border-background">
-                    +{activeUsers.length - 4}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+          {/* Active users with colors */}
+          <ActiveUsersPresence 
+            users={activeUsers} 
+            currentUserId={user?.id}
+            className="mr-2"
+          />
 
           {/* Public toggle - only show for owner */}
           {isOwner && (
@@ -287,7 +300,7 @@ export default function Project() {
                 <TooltipTrigger asChild>
                   <div className="flex items-center gap-2">
                     {project.is_public ? (
-                      <Globe className="h-4 w-4 text-success" />
+                      <Globe className="h-4 w-4 text-green-500" />
                     ) : (
                       <Lock className="h-4 w-4 text-muted-foreground" />
                     )}
@@ -386,27 +399,57 @@ export default function Project() {
       {/* Main workspace */}
       <div className="flex-1 overflow-hidden">
         <PanelGroup direction="horizontal">
-          {/* Sidebar */}
-          <Panel defaultSize={15} minSize={10} maxSize={25}>
-            <div className="h-full border-r border-border/50 bg-sidebar p-3">
-              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-                Collaborators
-              </h3>
-              <div className="space-y-2">
-                {activeUsers.map((u) => (
-                  <div key={u.id} className="flex items-center gap-2 p-2 rounded-md hover:bg-sidebar-accent">
-                    <Avatar className="h-6 w-6">
-                      <AvatarImage src={u.avatar_url} />
-                      <AvatarFallback className="bg-primary/20 text-primary text-xs">
-                        {u.username[0]?.toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                    <span className="text-sm truncate">{u.username}</span>
-                    <span className="ml-auto h-2 w-2 rounded-full bg-success animate-pulse" />
+          {/* Sidebar with tabs */}
+          <Panel defaultSize={18} minSize={12} maxSize={30}>
+            <div className="h-full border-r border-border/50 bg-sidebar flex flex-col">
+              {/* Sidebar tab switcher */}
+              <div className="flex border-b border-border/30">
+                <button
+                  onClick={() => setSidebarTab('files')}
+                  className={cn(
+                    'flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium transition-colors',
+                    sidebarTab === 'files' 
+                      ? 'text-foreground border-b-2 border-primary' 
+                      : 'text-muted-foreground hover:text-foreground'
+                  )}
+                >
+                  <FolderTree className="h-3.5 w-3.5" />
+                  Files
+                </button>
+                <button
+                  onClick={() => setSidebarTab('users')}
+                  className={cn(
+                    'flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium transition-colors relative',
+                    sidebarTab === 'users' 
+                      ? 'text-foreground border-b-2 border-primary' 
+                      : 'text-muted-foreground hover:text-foreground'
+                  )}
+                >
+                  <Users className="h-3.5 w-3.5" />
+                  Users
+                  {activeUsers.length > 0 && (
+                    <span className="absolute top-1.5 right-4 h-2 w-2 rounded-full bg-green-500" />
+                  )}
+                </button>
+              </div>
+
+              {/* Tab content */}
+              <div className="flex-1 overflow-hidden">
+                {sidebarTab === 'files' ? (
+                  <FileExplorer
+                    projectId={projectId!}
+                    files={files}
+                    selectedFileId={selectedFile?.id || null}
+                    onFileSelect={handleFileSelect}
+                    isOwner={isOwner}
+                  />
+                ) : (
+                  <div className="p-3">
+                    <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+                      Online Now ({activeUsers.length})
+                    </h3>
+                    <ActiveUsersSidebar users={activeUsers} currentUserId={user?.id} />
                   </div>
-                ))}
-                {activeUsers.length === 0 && (
-                  <p className="text-xs text-muted-foreground">No other users online</p>
                 )}
               </div>
             </div>
@@ -415,32 +458,73 @@ export default function Project() {
           <PanelResizeHandle className="w-1 bg-border/30 hover:bg-primary/50 transition-colors" />
 
           {/* Editor + Terminal */}
-          <Panel defaultSize={85}>
+          <Panel defaultSize={82}>
             <PanelGroup direction="vertical">
-              {/* Editor */}
+              {/* Editor with tabs */}
               <Panel defaultSize={70} minSize={30}>
-                <div className="h-full bg-editor">
-                  <Editor
-                    height="100%"
-                    language={LANGUAGE_MAP[project.language] || 'plaintext'}
-                    value={code}
-                    onChange={handleCodeChange}
-                    theme="vs-dark"
-                    options={{
-                      fontSize: 14,
-                      fontFamily: 'JetBrains Mono, monospace',
-                      minimap: { enabled: false },
-                      padding: { top: 16 },
-                      scrollBeyondLastLine: false,
-                      smoothScrolling: true,
-                      cursorBlinking: 'smooth',
-                      cursorSmoothCaretAnimation: 'on',
-                      renderLineHighlight: 'all',
-                      lineNumbers: 'on',
-                      wordWrap: 'on',
-                      tabSize: 2,
-                    }}
-                  />
+                <div className="h-full flex flex-col bg-editor">
+                  {/* File tabs */}
+                  {openTabs.length > 0 && (
+                    <div className="flex items-center border-b border-border/30 bg-card/30 overflow-x-auto">
+                      {openTabs.map((tab) => (
+                        <button
+                          key={tab.id}
+                          onClick={() => handleFileSelect(tab)}
+                          className={cn(
+                            'flex items-center gap-2 px-3 py-1.5 text-sm border-r border-border/30 hover:bg-sidebar-accent transition-colors min-w-0',
+                            selectedFile?.id === tab.id && 'bg-sidebar-accent'
+                          )}
+                        >
+                          <span className="truncate max-w-[120px]">{tab.name}</span>
+                          <button
+                            onClick={(e) => closeTab(tab, e)}
+                            className="hover:bg-destructive/20 rounded p-0.5"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Monaco editor */}
+                  <div className="flex-1">
+                    {selectedFile || files.length === 0 ? (
+                      <Editor
+                        height="100%"
+                        language={currentLanguage}
+                        value={code}
+                        onChange={handleCodeChange}
+                        theme="vs-dark"
+                        options={{
+                          fontSize: 14,
+                          fontFamily: 'JetBrains Mono, monospace',
+                          minimap: { enabled: true },
+                          padding: { top: 16 },
+                          scrollBeyondLastLine: false,
+                          smoothScrolling: true,
+                          cursorBlinking: 'smooth',
+                          cursorSmoothCaretAnimation: 'on',
+                          renderLineHighlight: 'all',
+                          lineNumbers: 'on',
+                          wordWrap: 'on',
+                          tabSize: 2,
+                          bracketPairColorization: { enabled: true },
+                          autoClosingBrackets: 'always',
+                          autoClosingQuotes: 'always',
+                          formatOnPaste: true,
+                        }}
+                      />
+                    ) : (
+                      <div className="flex items-center justify-center h-full text-muted-foreground">
+                        <div className="text-center">
+                          <FolderTree className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                          <p>Select a file to start editing</p>
+                          <p className="text-sm mt-1">or create a new file from the sidebar</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </Panel>
 
