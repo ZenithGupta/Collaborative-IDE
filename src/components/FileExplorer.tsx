@@ -49,7 +49,8 @@ interface FileExplorerProps {
   files: ProjectFile[];
   selectedFileId: string | null;
   onFileSelect: (file: ProjectFile) => void;
-  isOwner: boolean;
+  canManageFiles: boolean;
+  canEdit: boolean;
 }
 
 function getFileIcon(name: string, isFolder: boolean, isOpen?: boolean) {
@@ -100,7 +101,8 @@ interface FileTreeItemProps {
   onDelete: (file: ProjectFile) => void;
   onRename: (file: ProjectFile) => void;
   depth: number;
-  isOwner: boolean;
+  canManageFiles: boolean;
+  canEdit: boolean;
 }
 
 function FileTreeItem({
@@ -112,7 +114,8 @@ function FileTreeItem({
   onDelete,
   onRename,
   depth,
-  isOwner,
+  canManageFiles,
+  canEdit,
 }: FileTreeItemProps) {
   const [isOpen, setIsOpen] = useState(true);
   const children = files.filter((f) => f.parent_id === file.id);
@@ -140,7 +143,7 @@ function FileTreeItem({
               </button>
             </CollapsibleTrigger>
           </ContextMenuTrigger>
-          {isOwner && (
+          {canManageFiles && (
             <ContextMenuContent>
               <ContextMenuItem onClick={() => onCreateFile(file.id, false)}>
                 <FilePlus className="h-4 w-4 mr-2" />
@@ -172,18 +175,19 @@ function FileTreeItem({
               return a.name.localeCompare(b.name);
             })
             .map((child) => (
-              <FileTreeItem
-                key={child.id}
-                file={child}
-                files={files}
-                selectedFileId={selectedFileId}
-                onFileSelect={onFileSelect}
-                onCreateFile={onCreateFile}
-                onDelete={onDelete}
-                onRename={onRename}
-                depth={depth + 1}
-                isOwner={isOwner}
-              />
+                <FileTreeItem
+                  key={child.id}
+                  file={child}
+                  files={files}
+                  selectedFileId={selectedFileId}
+                  onFileSelect={onFileSelect}
+                  onCreateFile={onCreateFile}
+                  onDelete={onDelete}
+                  onRename={onRename}
+                  depth={depth + 1}
+                  canManageFiles={canManageFiles}
+                  canEdit={canEdit}
+                />
             ))}
         </CollapsibleContent>
       </Collapsible>
@@ -206,7 +210,7 @@ function FileTreeItem({
           <span className="truncate">{file.name}</span>
         </button>
       </ContextMenuTrigger>
-      {isOwner && (
+      {canManageFiles && (
         <ContextMenuContent>
           <ContextMenuItem onClick={() => onRename(file)}>
             <Edit2 className="h-4 w-4 mr-2" />
@@ -230,7 +234,8 @@ export function FileExplorer({
   files,
   selectedFileId,
   onFileSelect,
-  isOwner,
+  canManageFiles,
+  canEdit,
 }: FileExplorerProps) {
   const queryClient = useQueryClient();
   const [isCreating, setIsCreating] = useState<{ parentId: string | null; isFolder: boolean } | null>(null);
@@ -358,7 +363,7 @@ export function FileExplorer({
         <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
           Explorer
         </h3>
-        {isOwner && (
+        {canManageFiles && (
           <div className="flex items-center gap-1">
             <Button
               variant="ghost"
@@ -433,14 +438,15 @@ export function FileExplorer({
             onDelete={(f) => deleteFile.mutate(f)}
             onRename={handleRename}
             depth={0}
-            isOwner={isOwner}
+            canManageFiles={canManageFiles}
+            canEdit={canEdit}
           />
         ))}
 
         {files.length === 0 && !isCreating && (
           <div className="px-3 py-4 text-center">
             <p className="text-xs text-muted-foreground mb-2">No files yet</p>
-            {isOwner && (
+            {canManageFiles && (
               <Button
                 variant="outline"
                 size="sm"

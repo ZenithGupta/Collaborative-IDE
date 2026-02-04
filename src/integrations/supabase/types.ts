@@ -43,18 +43,21 @@ export type Database = {
           id: string
           joined_at: string
           project_id: string
+          role: Database["public"]["Enums"]["collaborator_role"]
           user_id: string
         }
         Insert: {
           id?: string
           joined_at?: string
           project_id: string
+          role?: Database["public"]["Enums"]["collaborator_role"]
           user_id: string
         }
         Update: {
           id?: string
           joined_at?: string
           project_id?: string
+          role?: Database["public"]["Enums"]["collaborator_role"]
           user_id?: string
         }
         Relationships: [
@@ -178,9 +181,17 @@ export type Database = {
     }
     Functions: {
       generate_room_code: { Args: never; Returns: string }
+      get_collaborator_role: {
+        Args: { _project_id: string; _user_id: string }
+        Returns: Database["public"]["Enums"]["collaborator_role"]
+      }
+      is_project_owner: {
+        Args: { _project_id: string; _user_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      collaborator_role: "view" | "edit" | "full_access"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -307,6 +318,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      collaborator_role: ["view", "edit", "full_access"],
+    },
   },
 } as const

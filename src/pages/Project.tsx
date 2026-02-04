@@ -5,6 +5,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useRealtimeCode } from '@/hooks/useRealtimeCode';
 import { useProjectFiles } from '@/hooks/useProjectFiles';
+import { useCollaboratorRole } from '@/hooks/useCollaboratorRole';
 import Editor from '@monaco-editor/react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { Button } from '@/components/ui/button';
@@ -37,6 +38,9 @@ import {
   Key,
   X,
   FolderTree,
+  Eye,
+  Edit2,
+  Shield,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -236,9 +240,24 @@ export default function Project() {
     }
   };
 
-  const isOwner = user?.id === project?.owner_id;
+  // Role-based permissions
+  const { isOwner, canEdit, canManageFiles, role, isLoading: roleLoading } = useCollaboratorRole({
+    projectId,
+    userId: user?.id,
+  });
 
-  if (isLoading || filesLoading) {
+  // Get role display info
+  const getRoleInfo = () => {
+    if (isOwner) return { label: 'Owner', icon: Shield, color: 'text-primary' };
+    if (role === 'full_access') return { label: 'Full Access', icon: Shield, color: 'text-emerald-500' };
+    if (role === 'edit') return { label: 'Edit Mode', icon: Edit2, color: 'text-amber-500' };
+    if (role === 'view') return { label: 'View Only', icon: Eye, color: 'text-muted-foreground' };
+    return null;
+  };
+
+  const roleInfo = getRoleInfo();
+
+  if (isLoading || filesLoading || roleLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -286,6 +305,17 @@ export default function Project() {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Role indicator for collaborators */}
+          {roleInfo && !isOwner && (
+            <div className={cn(
+              'flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-secondary/50 border border-border/50',
+              roleInfo.color
+            )}>
+              <roleInfo.icon className="h-3.5 w-3.5" />
+              <span className="text-xs font-medium">{roleInfo.label}</span>
+            </div>
+          )}
+
           {/* Active users with colors */}
           <ActiveUsersPresence 
             users={activeUsers} 
@@ -441,7 +471,8 @@ export default function Project() {
                     files={files}
                     selectedFileId={selectedFile?.id || null}
                     onFileSelect={handleFileSelect}
-                    isOwner={isOwner}
+                    canManageFiles={canManageFiles}
+                    canEdit={canEdit}
                   />
                 ) : (
                   <div className="p-3">
@@ -513,6 +544,7 @@ export default function Project() {
                           autoClosingBrackets: 'always',
                           autoClosingQuotes: 'always',
                           formatOnPaste: true,
+                          readOnly: !canEdit,
                         }}
                       />
                     ) : (
