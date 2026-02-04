@@ -252,11 +252,11 @@ export default function Dashboard() {
       </header>
 
       {/* Main content */}
-      <main className="container mx-auto px-4 py-8">
-        <div className="flex items-center justify-between mb-8">
+      <main className="container mx-auto px-4 py-6 sm:py-8">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 sm:mb-8">
           <div>
-            <h1 className="text-3xl font-bold mb-1">Your Projects</h1>
-            <p className="text-muted-foreground">Create and manage your coding projects</p>
+            <h1 className="text-2xl sm:text-3xl font-bold mb-1">Your Projects</h1>
+            <p className="text-sm sm:text-base text-muted-foreground">Create and manage your coding projects</p>
           </div>
           
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
