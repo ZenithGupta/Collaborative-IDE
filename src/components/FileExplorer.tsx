@@ -210,7 +210,7 @@ function FileTreeItem({
           <span className="truncate">{file.name}</span>
         </button>
       </ContextMenuTrigger>
-      {isOwner && (
+      {canManageFiles && (
         <ContextMenuContent>
           <ContextMenuItem onClick={() => onRename(file)}>
             <Edit2 className="h-4 w-4 mr-2" />
