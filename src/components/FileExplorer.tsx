@@ -175,18 +175,19 @@ function FileTreeItem({
               return a.name.localeCompare(b.name);
             })
             .map((child) => (
-              <FileTreeItem
-                key={child.id}
-                file={child}
-                files={files}
-                selectedFileId={selectedFileId}
-                onFileSelect={onFileSelect}
-                onCreateFile={onCreateFile}
-                onDelete={onDelete}
-                onRename={onRename}
-                depth={depth + 1}
-                isOwner={isOwner}
-              />
+                <FileTreeItem
+                  key={child.id}
+                  file={child}
+                  files={files}
+                  selectedFileId={selectedFileId}
+                  onFileSelect={onFileSelect}
+                  onCreateFile={onCreateFile}
+                  onDelete={onDelete}
+                  onRename={onRename}
+                  depth={depth + 1}
+                  canManageFiles={canManageFiles}
+                  canEdit={canEdit}
+                />
             ))}
         </CollapsibleContent>
       </Collapsible>
