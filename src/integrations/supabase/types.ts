@@ -74,6 +74,57 @@ export type Database = {
           },
         ]
       }
+      project_files: {
+        Row: {
+          content: string | null
+          created_at: string
+          id: string
+          is_folder: boolean
+          name: string
+          parent_id: string | null
+          path: string
+          project_id: string
+          updated_at: string
+        }
+        Insert: {
+          content?: string | null
+          created_at?: string
+          id?: string
+          is_folder?: boolean
+          name: string
+          parent_id?: string | null
+          path: string
+          project_id: string
+          updated_at?: string
+        }
+        Update: {
+          content?: string | null
+          created_at?: string
+          id?: string
+          is_folder?: boolean
+          name?: string
+          parent_id?: string | null
+          path?: string
+          project_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_files_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "project_files"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_files_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       projects: {
         Row: {
           code: string | null

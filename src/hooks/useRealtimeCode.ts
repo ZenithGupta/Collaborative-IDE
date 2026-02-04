@@ -3,18 +3,35 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { RealtimeChannel } from '@supabase/supabase-js';
 
+interface ActiveUser {
+  id: string;
+  username: string;
+  avatar_url?: string;
+  isTyping?: boolean;
+  currentFile?: string;
+}
+
 interface UseRealtimeCodeOptions {
   projectId: string | undefined;
+  currentFileId: string | null;
+  currentFileName: string | null;
   initialCode: string;
   onCodeChange: (code: string) => void;
 }
 
-export function useRealtimeCode({ projectId, initialCode, onCodeChange }: UseRealtimeCodeOptions) {
+export function useRealtimeCode({ 
+  projectId, 
+  currentFileId,
+  currentFileName,
+  initialCode, 
+  onCodeChange 
+}: UseRealtimeCodeOptions) {
   const { user } = useAuth();
   const channelRef = useRef<RealtimeChannel | null>(null);
-  const [activeUsers, setActiveUsers] = useState<{ id: string; username: string; avatar_url?: string }[]>([]);
+  const [activeUsers, setActiveUsers] = useState<ActiveUser[]>([]);
   const isLocalChangeRef = useRef(false);
   const lastBroadcastRef = useRef<string>('');
+  const typingTimeoutRef = useRef<NodeJS.Timeout>();
 
   // Subscribe to realtime code changes via broadcast
   useEffect(() => {
@@ -30,22 +47,25 @@ export function useRealtimeCode({ projectId, initialCode, onCodeChange }: UseRea
     interface CodePayload {
       code: string;
       userId: string;
+      fileId: string | null;
     }
 
     interface PresencePayload {
       id: string;
       username: string;
       avatar_url?: string;
+      isTyping?: boolean;
+      currentFile?: string;
     }
 
     // Listen for code broadcasts from other users
     channel.on('broadcast', { event: 'code_update' }, (payload) => {
       const data = payload.payload as CodePayload;
-      if (data.userId !== user.id) {
+      // Only update if same file and from different user
+      if (data.userId !== user.id && data.fileId === currentFileId) {
         console.log('[Realtime] Received code update from:', data.userId);
         isLocalChangeRef.current = true;
         onCodeChange(data.code);
-        // Reset flag after a short delay
         setTimeout(() => {
           isLocalChangeRef.current = false;
         }, 50);
@@ -72,6 +92,8 @@ export function useRealtimeCode({ projectId, initialCode, onCodeChange }: UseRea
           id: user.id,
           username: user.email?.split('@')[0] || 'Anonymous',
           avatar_url: user.user_metadata?.avatar_url,
+          isTyping: false,
+          currentFile: currentFileName || undefined,
         });
         console.log('[Realtime] Subscribed to channel:', `code:${projectId}`);
       }
@@ -84,7 +106,20 @@ export function useRealtimeCode({ projectId, initialCode, onCodeChange }: UseRea
       supabase.removeChannel(channel);
       channelRef.current = null;
     };
-  }, [projectId, user, onCodeChange]);
+  }, [projectId, user, currentFileId, currentFileName, onCodeChange]);
+
+  // Update presence when file changes
+  useEffect(() => {
+    if (!channelRef.current || !user) return;
+    
+    channelRef.current.track({
+      id: user.id,
+      username: user.email?.split('@')[0] || 'Anonymous',
+      avatar_url: user.user_metadata?.avatar_url,
+      isTyping: false,
+      currentFile: currentFileName || undefined,
+    });
+  }, [currentFileName, user]);
 
   // Broadcast code changes to other users
   const broadcastCode = useCallback((code: string) => {
@@ -94,12 +129,46 @@ export function useRealtimeCode({ projectId, initialCode, onCodeChange }: UseRea
     if (code === lastBroadcastRef.current) return;
     lastBroadcastRef.current = code;
 
+    // Set typing indicator
+    channelRef.current.track({
+      id: user.id,
+      username: user.email?.split('@')[0] || 'Anonymous',
+      avatar_url: user.user_metadata?.avatar_url,
+      isTyping: true,
+      currentFile: currentFileName || undefined,
+    });
+
+    // Clear typing after delay
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+    typingTimeoutRef.current = setTimeout(() => {
+      if (channelRef.current && user) {
+        channelRef.current.track({
+          id: user.id,
+          username: user.email?.split('@')[0] || 'Anonymous',
+          avatar_url: user.user_metadata?.avatar_url,
+          isTyping: false,
+          currentFile: currentFileName || undefined,
+        });
+      }
+    }, 1500);
+
     channelRef.current.send({
       type: 'broadcast',
       event: 'code_update',
-      payload: { code, userId: user.id },
+      payload: { code, userId: user.id, fileId: currentFileId },
     });
-  }, [user]);
+  }, [user, currentFileId, currentFileName]);
+
+  // Cleanup typing timeout
+  useEffect(() => {
+    return () => {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+    };
+  }, []);
 
   return {
     activeUsers,
