@@ -9,20 +9,14 @@ import { useCollaboratorRole } from '@/hooks/useCollaboratorRole';
 import Editor from '@monaco-editor/react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import { FileExplorer, ProjectFile } from '@/components/FileExplorer';
 import { ActiveUsersPresence, ActiveUsersSidebar } from '@/components/ActiveUsersPresence';
+import { ShareProjectDialog } from '@/components/ShareProjectDialog';
+import { RequestAccessDialog } from '@/components/RequestAccessDialog';
+import { AccessRequestsPanel } from '@/components/AccessRequestsPanel';
 import {
   Code2,
   Play,
@@ -30,12 +24,9 @@ import {
   ArrowLeft,
   Users,
   Terminal,
-  Copy,
-  Check,
   Share2,
   Globe,
   Lock,
-  Key,
   X,
   FolderTree,
   Eye,
