@@ -305,6 +305,37 @@ export default function Project() {
             </div>
           )}
 
+          {/* Public toggle - only show for owner */}
+          {user?.id === project.owner_id && (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-secondary/50 border border-border/50">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="flex items-center gap-2">
+                    {project.is_public ? (
+                      <Globe className="h-4 w-4 text-success" />
+                    ) : (
+                      <Lock className="h-4 w-4 text-muted-foreground" />
+                    )}
+                    <Label htmlFor="public-toggle" className="text-xs cursor-pointer">
+                      {project.is_public ? 'Public' : 'Private'}
+                    </Label>
+                    <Switch
+                      id="public-toggle"
+                      checked={project.is_public}
+                      onCheckedChange={(checked) => togglePublic.mutate(checked)}
+                      disabled={togglePublic.isPending}
+                    />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {project.is_public 
+                    ? 'Anyone with the link can view and collaborate'
+                    : 'Only you can access this project'}
+                </TooltipContent>
+              </Tooltip>
+            </div>
+          )}
+
           <Button variant="outline" size="sm" onClick={copyShareLink}>
             {copied ? <Check className="h-4 w-4 mr-1" /> : <Share2 className="h-4 w-4 mr-1" />}
             Share
