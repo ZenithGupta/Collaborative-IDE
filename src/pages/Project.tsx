@@ -519,6 +519,7 @@ export default function Project() {
                           autoClosingBrackets: 'always',
                           autoClosingQuotes: 'always',
                           formatOnPaste: true,
+                          readOnly: !canEdit,
                         }}
                       />
                     ) : (
