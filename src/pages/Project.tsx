@@ -8,6 +8,8 @@ import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import {
   Code2,
   Play,
@@ -19,6 +21,8 @@ import {
   Check,
   Settings,
   Share2,
+  Globe,
+  Lock,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
