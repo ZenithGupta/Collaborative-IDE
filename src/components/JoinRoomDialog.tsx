@@ -13,12 +13,33 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { Loader2, Users } from 'lucide-react';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Loader2, Users, Eye, Edit2, Shield } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface JoinRoomDialogProps {
   trigger?: React.ReactNode;
 }
+
+type CollaboratorRole = 'view' | 'edit' | 'full_access';
+
+const roleInfo: Record<CollaboratorRole, { label: string; description: string; icon: React.ReactNode }> = {
+  view: {
+    label: 'View Only',
+    description: 'Can view the project but cannot make changes',
+    icon: <Eye className="h-4 w-4" />,
+  },
+  edit: {
+    label: 'Edit Mode',
+    description: 'Can edit existing files but cannot create or delete files',
+    icon: <Edit2 className="h-4 w-4" />,
+  },
+  full_access: {
+    label: 'Full Access',
+    description: 'Can do everything including creating and deleting files',
+    icon: <Shield className="h-4 w-4" />,
+  },
+};
 
 export function JoinRoomDialog({ trigger }: JoinRoomDialogProps) {
   const navigate = useNavigate();
@@ -26,6 +47,7 @@ export function JoinRoomDialog({ trigger }: JoinRoomDialogProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [roomCode, setRoomCode] = useState('');
   const [password, setPassword] = useState('');
+  const [selectedRole, setSelectedRole] = useState<CollaboratorRole>('view');
   const [isJoining, setIsJoining] = useState(false);
 
   const handleJoin = async (e: React.FormEvent) => {
@@ -73,12 +95,13 @@ export function JoinRoomDialog({ trigger }: JoinRoomDialogProps) {
         return;
       }
 
-      // Add user as collaborator
+      // Add user as collaborator with selected role
       const { error: collabError } = await supabase
         .from('project_collaborators')
         .upsert({
           project_id: project.id,
           user_id: user.id,
+          role: selectedRole,
         }, {
           onConflict: 'project_id,user_id'
         });
@@ -90,11 +113,12 @@ export function JoinRoomDialog({ trigger }: JoinRoomDialogProps) {
         return;
       }
 
-      toast.success('Joined room successfully!');
+      toast.success(`Joined room with ${roleInfo[selectedRole].label} access!`);
       navigate(`/project/${project.id}`);
       setIsOpen(false);
       setRoomCode('');
       setPassword('');
+      setSelectedRole('view');
     } catch (error) {
       console.error('Join room error:', error);
       toast.error('An error occurred while joining the room');
@@ -113,11 +137,11 @@ export function JoinRoomDialog({ trigger }: JoinRoomDialogProps) {
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Join a Room</DialogTitle>
           <DialogDescription>
-            Enter the room code and password (if required) to join a project
+            Enter the room code, password (if required), and select your access level
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleJoin} className="space-y-4 mt-4">
@@ -143,6 +167,38 @@ export function JoinRoomDialog({ trigger }: JoinRoomDialogProps) {
               onChange={(e) => setPassword(e.target.value)}
             />
           </div>
+          
+          <div className="space-y-3">
+            <Label>Access Level</Label>
+            <RadioGroup
+              value={selectedRole}
+              onValueChange={(value) => setSelectedRole(value as CollaboratorRole)}
+              className="space-y-2"
+            >
+              {(Object.entries(roleInfo) as [CollaboratorRole, typeof roleInfo[CollaboratorRole]][]).map(
+                ([role, info]) => (
+                  <label
+                    key={role}
+                    className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                      selectedRole === role
+                        ? 'border-primary bg-primary/5'
+                        : 'border-border hover:border-primary/50'
+                    }`}
+                  >
+                    <RadioGroupItem value={role} className="mt-0.5" />
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        {info.icon}
+                        <span className="font-medium text-sm">{info.label}</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">{info.description}</p>
+                    </div>
+                  </label>
+                )
+              )}
+            </RadioGroup>
+          </div>
+
           <div className="flex justify-end gap-2 pt-4">
             <Button type="button" variant="outline" onClick={() => setIsOpen(false)}>
               Cancel

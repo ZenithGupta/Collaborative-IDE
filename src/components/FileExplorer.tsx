@@ -49,7 +49,8 @@ interface FileExplorerProps {
   files: ProjectFile[];
   selectedFileId: string | null;
   onFileSelect: (file: ProjectFile) => void;
-  isOwner: boolean;
+  canManageFiles: boolean;
+  canEdit: boolean;
 }
 
 function getFileIcon(name: string, isFolder: boolean, isOpen?: boolean) {
