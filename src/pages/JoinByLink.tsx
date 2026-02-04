@@ -111,18 +111,32 @@ export default function JoinByLink() {
     setIsJoining(true);
 
     try {
-      // Add user as collaborator
-      const { error: collabError } = await supabase
+      // Check if collaborator record exists
+      const { data: existing } = await supabase
         .from('project_collaborators')
-        .upsert({
-          project_id: projectInfo.id,
-          user_id: user.id,
-          role: projectInfo.role,
-        }, {
-          onConflict: 'project_id,user_id'
-        });
+        .select('id')
+        .eq('project_id', projectInfo.id)
+        .eq('user_id', user.id)
+        .maybeSingle();
 
-      if (collabError) throw collabError;
+      if (existing) {
+        // Update existing
+        const { error: updateError } = await supabase
+          .from('project_collaborators')
+          .update({ role: projectInfo.role as 'view' | 'edit' | 'full_access' })
+          .eq('id', existing.id);
+        if (updateError) throw updateError;
+      } else {
+        // Insert new
+        const { error: insertError } = await supabase
+          .from('project_collaborators')
+          .insert({
+            project_id: projectInfo.id,
+            user_id: user.id,
+            role: projectInfo.role as 'view' | 'edit' | 'full_access',
+          });
+        if (insertError) throw insertError;
+      }
 
       toast.success(`Joined with ${roleInfo[projectInfo.role].label} access!`);
       navigate(`/project/${projectInfo.id}`);
