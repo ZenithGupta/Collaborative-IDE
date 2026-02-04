@@ -314,6 +314,11 @@ export default function Project() {
             </div>
           )}
 
+          {/* Request access - for collaborators */}
+          {!isOwner && role && role !== 'full_access' && (
+            <RequestAccessDialog projectId={projectId!} currentRole={role} />
+          )}
+
           <Button variant="outline" size="sm" onClick={() => setShowShareDialog(true)}>
             <Share2 className="h-4 w-4 mr-1" />
             Share
