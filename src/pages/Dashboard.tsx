@@ -318,11 +318,11 @@ export default function Dashboard() {
 
         {/* Projects grid */}
         {projectsLoading ? (
-          <div className="flex items-center justify-center py-20">
+          <div className="flex items-center justify-center py-16 sm:py-20">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
         ) : allProjects && allProjects.length > 0 ? (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {allProjects.map((project) => {
               const langInfo = getLanguageInfo(project.language);
               return (
