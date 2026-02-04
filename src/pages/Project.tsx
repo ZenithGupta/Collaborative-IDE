@@ -98,10 +98,16 @@ export default function Project() {
 
     const channel = supabase.channel(`project:${projectId}`);
 
+    interface PresencePayload {
+      id: string;
+      username: string;
+      avatar_url?: string;
+    }
+
     channel
       .on('presence', { event: 'sync' }, () => {
-        const state = channel.presenceState();
-        const users = Object.values(state).flat() as { id: string; username: string; avatar_url?: string }[];
+        const state = channel.presenceState<PresencePayload>();
+        const users = Object.values(state).flat();
         setActiveUsers(users.filter((u, i, arr) => arr.findIndex(x => x.id === u.id) === i));
       })
       .on('presence', { event: 'join' }, ({ newPresences }) => {
