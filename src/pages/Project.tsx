@@ -5,6 +5,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useRealtimeCode } from '@/hooks/useRealtimeCode';
 import { useProjectFiles } from '@/hooks/useProjectFiles';
+import { useCollaboratorRole } from '@/hooks/useCollaboratorRole';
 import Editor from '@monaco-editor/react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { Button } from '@/components/ui/button';
