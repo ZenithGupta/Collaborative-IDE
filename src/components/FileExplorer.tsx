@@ -114,7 +114,8 @@ function FileTreeItem({
   onDelete,
   onRename,
   depth,
-  isOwner,
+  canManageFiles,
+  canEdit,
 }: FileTreeItemProps) {
   const [isOpen, setIsOpen] = useState(true);
   const children = files.filter((f) => f.parent_id === file.id);
