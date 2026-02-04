@@ -30,9 +30,11 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Code2, Plus, FolderCode, Clock, Loader2, LogOut, User, Trash2 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Code2, Plus, FolderCode, Clock, Loader2, LogOut, User, Trash2, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
+import { JoinRoomDialog } from '@/components/JoinRoomDialog';
 
 const LANGUAGES = [
   { value: 'javascript', label: 'JavaScript', icon: '🟨' },
@@ -81,9 +83,9 @@ export default function Dashboard() {
     enabled: !!user?.id,
   });
 
-  // Fetch user projects
-  const { data: projects, isLoading: projectsLoading } = useQuery({
-    queryKey: ['projects', user?.id],
+  // Fetch user's own projects
+  const { data: ownProjects, isLoading: ownLoading } = useQuery({
+    queryKey: ['own-projects', user?.id],
     queryFn: async () => {
       if (!user?.id) return [];
       const { data, error } = await supabase
@@ -96,6 +98,27 @@ export default function Dashboard() {
     },
     enabled: !!user?.id,
   });
+
+  // Fetch collaborated projects
+  const { data: collabProjects, isLoading: collabLoading } = useQuery({
+    queryKey: ['collab-projects', user?.id],
+    queryFn: async () => {
+      if (!user?.id) return [];
+      const { data, error } = await supabase
+        .from('project_collaborators')
+        .select('project_id, projects(*)')
+        .eq('user_id', user.id);
+      if (error) throw error;
+      return data.map(c => c.projects).filter(Boolean);
+    },
+    enabled: !!user?.id,
+  });
+
+  const projectsLoading = ownLoading || collabLoading;
+  const allProjects = [
+    ...(ownProjects || []).map(p => ({ ...p, isOwner: true })),
+    ...(collabProjects || []).map(p => ({ ...p, isOwner: false })),
+  ];
 
   // Create project mutation
   const createProject = useMutation({
@@ -117,7 +140,7 @@ export default function Dashboard() {
       return data;
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      queryClient.invalidateQueries({ queryKey: ['own-projects'] });
       setIsDialogOpen(false);
       setProjectName('');
       setProjectLanguage('javascript');
@@ -139,11 +162,31 @@ export default function Dashboard() {
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      queryClient.invalidateQueries({ queryKey: ['own-projects'] });
       toast.success('Project deleted');
     },
     onError: (error) => {
       toast.error('Failed to delete project: ' + error.message);
+    },
+  });
+
+  // Leave collaboration
+  const leaveProject = useMutation({
+    mutationFn: async (projectId: string) => {
+      if (!user?.id) throw new Error('Not authenticated');
+      const { error } = await supabase
+        .from('project_collaborators')
+        .delete()
+        .eq('project_id', projectId)
+        .eq('user_id', user.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['collab-projects'] });
+      toast.success('Left project');
+    },
+    onError: (error) => {
+      toast.error('Failed to leave project: ' + error.message);
     },
   });
 
@@ -177,30 +220,34 @@ export default function Dashboard() {
             <span className="text-xl font-bold text-gradient">CodeVibe</span>
           </div>
           
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="gap-2">
-                <Avatar className="h-8 w-8">
-                  <AvatarImage src={profile?.avatar_url || undefined} />
-                  <AvatarFallback className="bg-primary/20 text-primary text-sm">
-                    {profile?.username?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
-                <span className="hidden sm:inline text-sm">{profile?.username || user?.email?.split('@')[0]}</span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuItem disabled className="text-muted-foreground">
-                <User className="mr-2 h-4 w-4" />
-                Profile
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={handleSignOut} className="text-destructive focus:text-destructive">
-                <LogOut className="mr-2 h-4 w-4" />
-                Sign Out
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <div className="flex items-center gap-2">
+            <JoinRoomDialog />
+            
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="gap-2">
+                  <Avatar className="h-8 w-8">
+                    <AvatarImage src={profile?.avatar_url || undefined} />
+                    <AvatarFallback className="bg-primary/20 text-primary text-sm">
+                      {profile?.username?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="hidden sm:inline text-sm">{profile?.username || user?.email?.split('@')[0]}</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem disabled className="text-muted-foreground">
+                  <User className="mr-2 h-4 w-4" />
+                  Profile
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleSignOut} className="text-destructive focus:text-destructive">
+                  <LogOut className="mr-2 h-4 w-4" />
+                  Sign Out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
       </header>
 
@@ -274,9 +321,9 @@ export default function Dashboard() {
           <div className="flex items-center justify-center py-20">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
-        ) : projects && projects.length > 0 ? (
+        ) : allProjects && allProjects.length > 0 ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {projects.map((project) => {
+            {allProjects.map((project) => {
               const langInfo = getLanguageInfo(project.language);
               return (
                 <Card
@@ -292,24 +339,48 @@ export default function Dashboard() {
                           {project.name}
                         </CardTitle>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (confirm('Delete this project?')) {
-                            deleteProject.mutate(project.id);
-                          }
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      {project.isOwner ? (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (confirm('Delete this project?')) {
+                              deleteProject.mutate(project.id);
+                            }
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-warning"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (confirm('Leave this project?')) {
+                              leaveProject.mutate(project.id);
+                            }
+                          }}
+                        >
+                          <LogOut className="h-4 w-4" />
+                        </Button>
+                      )}
                     </div>
-                    <CardDescription className="flex items-center gap-1 text-xs">
-                      <Clock className="h-3 w-3" />
-                      {formatDistanceToNow(new Date(project.updated_at), { addSuffix: true })}
-                    </CardDescription>
+                    <div className="flex items-center gap-2">
+                      <CardDescription className="flex items-center gap-1 text-xs">
+                        <Clock className="h-3 w-3" />
+                        {formatDistanceToNow(new Date(project.updated_at), { addSuffix: true })}
+                      </CardDescription>
+                      {!project.isOwner && (
+                        <Badge variant="secondary" className="text-xs">
+                          <Users className="h-3 w-3 mr-1" />
+                          Shared
+                        </Badge>
+                      )}
+                    </div>
                   </CardHeader>
                   <CardContent>
                     <div className="h-20 rounded-md bg-editor border border-border/50 overflow-hidden font-mono text-xs p-2 text-muted-foreground">
@@ -328,12 +399,22 @@ export default function Dashboard() {
               </div>
               <h3 className="text-lg font-semibold mb-2">No projects yet</h3>
               <p className="text-muted-foreground text-center mb-4">
-                Create your first project to start coding
+                Create your first project or join a room to collaborate
               </p>
-              <Button className="gradient-primary gap-2" onClick={() => setIsDialogOpen(true)}>
-                <Plus className="h-4 w-4" />
-                Create Project
-              </Button>
+              <div className="flex gap-2">
+                <Button className="gradient-primary gap-2" onClick={() => setIsDialogOpen(true)}>
+                  <Plus className="h-4 w-4" />
+                  Create Project
+                </Button>
+                <JoinRoomDialog 
+                  trigger={
+                    <Button variant="outline" className="gap-2">
+                      <Users className="h-4 w-4" />
+                      Join Room
+                    </Button>
+                  } 
+                />
+              </div>
             </CardContent>
           </Card>
         )}
