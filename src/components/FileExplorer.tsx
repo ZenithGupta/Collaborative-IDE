@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -10,6 +10,16 @@ import {
   ContextMenuTrigger,
   ContextMenuSeparator,
 } from '@/components/ui/context-menu';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import {
   Collapsible,
   CollapsibleContent,
@@ -28,6 +38,9 @@ import {
   FileJson,
   FileText,
   File,
+  Copy,
+  Clipboard,
+  RefreshCw,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -53,12 +66,17 @@ interface FileExplorerProps {
   canEdit: boolean;
 }
 
+interface CreationState {
+  parentId: string | null;
+  isFolder: boolean;
+}
+
 function getFileIcon(name: string, isFolder: boolean, isOpen?: boolean) {
   if (isFolder) {
     return isOpen ? (
-      <FolderOpen className="h-4 w-4 text-amber-500" />
+      <FolderOpen className="h-4 w-4 text-amber-500 shrink-0" />
     ) : (
-      <Folder className="h-4 w-4 text-amber-500" />
+      <Folder className="h-4 w-4 text-amber-500 shrink-0" />
     );
   }
 
@@ -66,30 +84,86 @@ function getFileIcon(name: string, isFolder: boolean, isOpen?: boolean) {
   switch (ext) {
     case 'js':
     case 'jsx':
-      return <FileCode className="h-4 w-4 text-yellow-400" />;
+      return <FileCode className="h-4 w-4 text-yellow-400 shrink-0" />;
     case 'ts':
     case 'tsx':
-      return <FileCode className="h-4 w-4 text-blue-400" />;
+      return <FileCode className="h-4 w-4 text-blue-400 shrink-0" />;
     case 'py':
-      return <FileCode className="h-4 w-4 text-green-400" />;
+      return <FileCode className="h-4 w-4 text-green-400 shrink-0" />;
     case 'java':
-      return <FileCode className="h-4 w-4 text-orange-400" />;
+      return <FileCode className="h-4 w-4 text-orange-400 shrink-0" />;
     case 'cpp':
     case 'c':
     case 'h':
-      return <FileCode className="h-4 w-4 text-purple-400" />;
+      return <FileCode className="h-4 w-4 text-purple-400 shrink-0" />;
     case 'json':
-      return <FileJson className="h-4 w-4 text-yellow-300" />;
+      return <FileJson className="h-4 w-4 text-yellow-300 shrink-0" />;
     case 'md':
     case 'txt':
-      return <FileText className="h-4 w-4 text-muted-foreground" />;
+      return <FileText className="h-4 w-4 text-muted-foreground shrink-0" />;
     case 'html':
-      return <FileCode className="h-4 w-4 text-orange-500" />;
+      return <FileCode className="h-4 w-4 text-orange-500 shrink-0" />;
     case 'css':
-      return <FileCode className="h-4 w-4 text-blue-500" />;
+    case 'scss':
+    case 'sass':
+      return <FileCode className="h-4 w-4 text-blue-500 shrink-0" />;
+    case 'go':
+      return <FileCode className="h-4 w-4 text-cyan-400 shrink-0" />;
+    case 'rs':
+      return <FileCode className="h-4 w-4 text-orange-600 shrink-0" />;
+    case 'rb':
+      return <FileCode className="h-4 w-4 text-red-400 shrink-0" />;
+    case 'php':
+      return <FileCode className="h-4 w-4 text-indigo-400 shrink-0" />;
     default:
-      return <File className="h-4 w-4 text-muted-foreground" />;
+      return <File className="h-4 w-4 text-muted-foreground shrink-0" />;
   }
+}
+
+interface InlineInputProps {
+  placeholder: string;
+  onSubmit: (name: string) => void;
+  onCancel: () => void;
+  depth: number;
+  icon: React.ReactNode;
+}
+
+function InlineInput({ placeholder, onSubmit, onCancel, depth, icon }: InlineInputProps) {
+  const [value, setValue] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  const handleSubmit = () => {
+    if (value.trim()) {
+      onSubmit(value.trim());
+    } else {
+      onCancel();
+    }
+  };
+
+  return (
+    <div
+      className="flex items-center gap-1 px-2 py-0.5"
+      style={{ paddingLeft: `${depth * 12 + 20}px` }}
+    >
+      {icon}
+      <Input
+        ref={inputRef}
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') handleSubmit();
+          if (e.key === 'Escape') onCancel();
+        }}
+        onBlur={handleSubmit}
+        className="h-6 text-xs px-1.5 py-0"
+      />
+    </div>
+  );
 }
 
 interface FileTreeItemProps {
@@ -100,9 +174,19 @@ interface FileTreeItemProps {
   onCreateFile: (parentId: string | null, isFolder: boolean) => void;
   onDelete: (file: ProjectFile) => void;
   onRename: (file: ProjectFile) => void;
+  onDuplicate: (file: ProjectFile) => void;
+  onCopyPath: (file: ProjectFile) => void;
+  creationState: CreationState | null;
+  onCreationSubmit: (name: string) => void;
+  onCreationCancel: () => void;
+  renamingFile: ProjectFile | null;
+  onRenameSubmit: (name: string) => void;
+  onRenameCancel: () => void;
   depth: number;
   canManageFiles: boolean;
   canEdit: boolean;
+  expandedFolders: Set<string>;
+  toggleFolder: (folderId: string) => void;
 }
 
 function FileTreeItem({
@@ -113,23 +197,66 @@ function FileTreeItem({
   onCreateFile,
   onDelete,
   onRename,
+  onDuplicate,
+  onCopyPath,
+  creationState,
+  onCreationSubmit,
+  onCreationCancel,
+  renamingFile,
+  onRenameSubmit,
+  onRenameCancel,
   depth,
   canManageFiles,
   canEdit,
+  expandedFolders,
+  toggleFolder,
 }: FileTreeItemProps) {
-  const [isOpen, setIsOpen] = useState(true);
   const children = files.filter((f) => f.parent_id === file.id);
+  const isOpen = expandedFolders.has(file.id);
+  const isCreatingHere = creationState?.parentId === file.id;
+  const isRenaming = renamingFile?.id === file.id;
+
+  // Rename inline input
+  if (isRenaming) {
+    return (
+      <div
+        className="flex items-center gap-1 px-2 py-0.5"
+        style={{ paddingLeft: `${depth * 12 + (file.is_folder ? 8 : 20)}px` }}
+      >
+        {file.is_folder && <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />}
+        {getFileIcon(file.name, file.is_folder, isOpen)}
+        <Input
+          autoFocus
+          defaultValue={file.name}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              onRenameSubmit((e.target as HTMLInputElement).value);
+            }
+            if (e.key === 'Escape') onRenameCancel();
+          }}
+          onBlur={(e) => {
+            if (e.target.value.trim()) {
+              onRenameSubmit(e.target.value.trim());
+            } else {
+              onRenameCancel();
+            }
+          }}
+          className="h-6 text-xs px-1.5 py-0"
+        />
+      </div>
+    );
+  }
 
   if (file.is_folder) {
     return (
-      <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+      <Collapsible open={isOpen} onOpenChange={() => toggleFolder(file.id)}>
         <ContextMenu>
           <ContextMenuTrigger>
             <CollapsibleTrigger asChild>
               <button
                 className={cn(
                   'w-full flex items-center gap-1 px-2 py-1 rounded-sm text-sm hover:bg-sidebar-accent transition-colors',
-                  'text-left'
+                  'text-left group'
                 )}
                 style={{ paddingLeft: `${depth * 12 + 8}px` }}
               >
@@ -140,6 +267,31 @@ function FileTreeItem({
                 )}
                 {getFileIcon(file.name, true, isOpen)}
                 <span className="truncate">{file.name}</span>
+                {/* Quick action buttons on hover */}
+                {canManageFiles && (
+                  <div className="ml-auto flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onCreateFile(file.id, false);
+                      }}
+                      className="p-0.5 hover:bg-sidebar-accent rounded"
+                      title="New File"
+                    >
+                      <FilePlus className="h-3 w-3 text-muted-foreground" />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onCreateFile(file.id, true);
+                      }}
+                      className="p-0.5 hover:bg-sidebar-accent rounded"
+                      title="New Folder"
+                    >
+                      <FolderPlus className="h-3 w-3 text-muted-foreground" />
+                    </button>
+                  </div>
+                )}
               </button>
             </CollapsibleTrigger>
           </ContextMenuTrigger>
@@ -152,6 +304,11 @@ function FileTreeItem({
               <ContextMenuItem onClick={() => onCreateFile(file.id, true)}>
                 <FolderPlus className="h-4 w-4 mr-2" />
                 New Folder
+              </ContextMenuItem>
+              <ContextMenuSeparator />
+              <ContextMenuItem onClick={() => onCopyPath(file)}>
+                <Clipboard className="h-4 w-4 mr-2" />
+                Copy Path
               </ContextMenuItem>
               <ContextMenuSeparator />
               <ContextMenuItem onClick={() => onRename(file)}>
@@ -169,31 +326,56 @@ function FileTreeItem({
           )}
         </ContextMenu>
         <CollapsibleContent>
+          {/* Creation input inside folder */}
+          {isCreatingHere && (
+            <InlineInput
+              placeholder={creationState.isFolder ? 'Folder name...' : 'File name...'}
+              onSubmit={onCreationSubmit}
+              onCancel={onCreationCancel}
+              depth={depth + 1}
+              icon={
+                creationState.isFolder 
+                  ? <Folder className="h-4 w-4 text-amber-500 shrink-0" />
+                  : <File className="h-4 w-4 text-muted-foreground shrink-0" />
+              }
+            />
+          )}
           {children
             .sort((a, b) => {
               if (a.is_folder !== b.is_folder) return a.is_folder ? -1 : 1;
               return a.name.localeCompare(b.name);
             })
             .map((child) => (
-                <FileTreeItem
-                  key={child.id}
-                  file={child}
-                  files={files}
-                  selectedFileId={selectedFileId}
-                  onFileSelect={onFileSelect}
-                  onCreateFile={onCreateFile}
-                  onDelete={onDelete}
-                  onRename={onRename}
-                  depth={depth + 1}
-                  canManageFiles={canManageFiles}
-                  canEdit={canEdit}
-                />
+              <FileTreeItem
+                key={child.id}
+                file={child}
+                files={files}
+                selectedFileId={selectedFileId}
+                onFileSelect={onFileSelect}
+                onCreateFile={onCreateFile}
+                onDelete={onDelete}
+                onRename={onRename}
+                onDuplicate={onDuplicate}
+                onCopyPath={onCopyPath}
+                creationState={creationState}
+                onCreationSubmit={onCreationSubmit}
+                onCreationCancel={onCreationCancel}
+                renamingFile={renamingFile}
+                onRenameSubmit={onRenameSubmit}
+                onRenameCancel={onRenameCancel}
+                depth={depth + 1}
+                canManageFiles={canManageFiles}
+                canEdit={canEdit}
+                expandedFolders={expandedFolders}
+                toggleFolder={toggleFolder}
+              />
             ))}
         </CollapsibleContent>
       </Collapsible>
     );
   }
 
+  // File item
   return (
     <ContextMenu>
       <ContextMenuTrigger>
@@ -201,28 +383,54 @@ function FileTreeItem({
           onClick={() => onFileSelect(file)}
           className={cn(
             'w-full flex items-center gap-2 px-2 py-1 rounded-sm text-sm hover:bg-sidebar-accent transition-colors',
-            'text-left',
+            'text-left group',
             selectedFileId === file.id && 'bg-sidebar-accent text-sidebar-accent-foreground'
           )}
           style={{ paddingLeft: `${depth * 12 + 20}px` }}
         >
           {getFileIcon(file.name, false)}
           <span className="truncate">{file.name}</span>
+          {/* Quick delete button on hover */}
+          {canManageFiles && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(file);
+              }}
+              className="ml-auto p-0.5 opacity-0 group-hover:opacity-100 hover:bg-destructive/20 rounded transition-opacity"
+              title="Delete"
+            >
+              <Trash2 className="h-3 w-3 text-muted-foreground hover:text-destructive" />
+            </button>
+          )}
         </button>
       </ContextMenuTrigger>
-      {canManageFiles && (
+      {(canManageFiles || canEdit) && (
         <ContextMenuContent>
-          <ContextMenuItem onClick={() => onRename(file)}>
-            <Edit2 className="h-4 w-4 mr-2" />
-            Rename
-          </ContextMenuItem>
-          <ContextMenuItem
-            onClick={() => onDelete(file)}
-            className="text-destructive focus:text-destructive"
-          >
-            <Trash2 className="h-4 w-4 mr-2" />
-            Delete
-          </ContextMenuItem>
+          {canManageFiles && (
+            <>
+              <ContextMenuItem onClick={() => onDuplicate(file)}>
+                <Copy className="h-4 w-4 mr-2" />
+                Duplicate
+              </ContextMenuItem>
+              <ContextMenuItem onClick={() => onCopyPath(file)}>
+                <Clipboard className="h-4 w-4 mr-2" />
+                Copy Path
+              </ContextMenuItem>
+              <ContextMenuSeparator />
+              <ContextMenuItem onClick={() => onRename(file)}>
+                <Edit2 className="h-4 w-4 mr-2" />
+                Rename
+              </ContextMenuItem>
+              <ContextMenuItem
+                onClick={() => onDelete(file)}
+                className="text-destructive focus:text-destructive"
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Delete
+              </ContextMenuItem>
+            </>
+          )}
         </ContextMenuContent>
       )}
     </ContextMenu>
@@ -238,9 +446,28 @@ export function FileExplorer({
   canEdit,
 }: FileExplorerProps) {
   const queryClient = useQueryClient();
-  const [isCreating, setIsCreating] = useState<{ parentId: string | null; isFolder: boolean } | null>(null);
-  const [isRenaming, setIsRenaming] = useState<ProjectFile | null>(null);
-  const [newName, setNewName] = useState('');
+  const [creationState, setCreationState] = useState<CreationState | null>(null);
+  const [renamingFile, setRenamingFile] = useState<ProjectFile | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<ProjectFile | null>(null);
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
+
+  // Auto-expand all folders on initial load
+  useEffect(() => {
+    const folderIds = files.filter(f => f.is_folder).map(f => f.id);
+    setExpandedFolders(new Set(folderIds));
+  }, [files.length === 0]); // Only on initial load
+
+  const toggleFolder = useCallback((folderId: string) => {
+    setExpandedFolders(prev => {
+      const next = new Set(prev);
+      if (next.has(folderId)) {
+        next.delete(folderId);
+      } else {
+        next.add(folderId);
+      }
+      return next;
+    });
+  }, []);
 
   const createFile = useMutation({
     mutationFn: async ({ name, parentId, isFolder }: { name: string; parentId: string | null; isFolder: boolean }) => {
@@ -268,8 +495,13 @@ export function FileExplorer({
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['project-files', projectId] });
       toast.success(`${data.is_folder ? 'Folder' : 'File'} created!`);
-      setIsCreating(null);
-      setNewName('');
+      setCreationState(null);
+      
+      // Expand parent folder if creating inside one
+      if (data.parent_id) {
+        setExpandedFolders(prev => new Set([...prev, data.parent_id!]));
+      }
+      
       if (!data.is_folder) {
         onFileSelect(data);
       }
@@ -295,8 +527,7 @@ export function FileExplorer({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['project-files', projectId] });
       toast.success('Renamed successfully!');
-      setIsRenaming(null);
-      setNewName('');
+      setRenamingFile(null);
     },
     onError: (error: Error) => {
       toast.error(error.message || 'Failed to rename');
@@ -305,6 +536,14 @@ export function FileExplorer({
 
   const deleteFile = useMutation({
     mutationFn: async (file: ProjectFile) => {
+      // If it's a folder, we need to delete all children first (cascade)
+      if (file.is_folder) {
+        const childrenToDelete = getAllDescendants(file.id, files);
+        for (const child of childrenToDelete) {
+          await supabase.from('project_files').delete().eq('id', child.id);
+        }
+      }
+
       const { error } = await supabase
         .from('project_files')
         .delete()
@@ -316,39 +555,120 @@ export function FileExplorer({
     onSuccess: (file) => {
       queryClient.invalidateQueries({ queryKey: ['project-files', projectId] });
       toast.success(`${file.is_folder ? 'Folder' : 'File'} deleted!`);
+      setDeleteConfirm(null);
     },
     onError: (error: Error) => {
       toast.error(error.message || 'Failed to delete');
+      setDeleteConfirm(null);
     },
   });
 
+  const duplicateFile = useMutation({
+    mutationFn: async (file: ProjectFile) => {
+      const baseName = file.name.replace(/\.[^/.]+$/, '');
+      const ext = file.name.includes('.') ? '.' + file.name.split('.').pop() : '';
+      const newName = `${baseName} (copy)${ext}`;
+      const parentPath = file.parent_id
+        ? files.find(f => f.id === file.parent_id)?.path || ''
+        : '';
+      const newPath = parentPath ? `${parentPath}/${newName}` : newName;
+
+      const { data, error } = await supabase
+        .from('project_files')
+        .insert({
+          project_id: projectId,
+          name: newName,
+          path: newPath,
+          is_folder: false,
+          parent_id: file.parent_id,
+          content: file.content,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['project-files', projectId] });
+      toast.success('File duplicated!');
+      onFileSelect(data);
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to duplicate');
+    },
+  });
+
+  // Get all descendants of a folder
+  function getAllDescendants(folderId: string, allFiles: ProjectFile[]): ProjectFile[] {
+    const children = allFiles.filter(f => f.parent_id === folderId);
+    let descendants: ProjectFile[] = [...children];
+    for (const child of children) {
+      if (child.is_folder) {
+        descendants = [...descendants, ...getAllDescendants(child.id, allFiles)];
+      }
+    }
+    return descendants;
+  }
+
   const handleCreate = useCallback((parentId: string | null, isFolder: boolean) => {
-    setIsCreating({ parentId, isFolder });
-    setNewName('');
+    setCreationState({ parentId, isFolder });
+    // Expand parent folder
+    if (parentId) {
+      setExpandedFolders(prev => new Set([...prev, parentId]));
+    }
+  }, []);
+
+  const handleCreationSubmit = useCallback((name: string) => {
+    if (!creationState) return;
+    createFile.mutate({
+      name,
+      parentId: creationState.parentId,
+      isFolder: creationState.isFolder,
+    });
+  }, [creationState, createFile]);
+
+  const handleCreationCancel = useCallback(() => {
+    setCreationState(null);
   }, []);
 
   const handleRename = useCallback((file: ProjectFile) => {
-    setIsRenaming(file);
-    setNewName(file.name);
+    setRenamingFile(file);
   }, []);
 
-  const handleSubmitCreate = () => {
-    if (!newName.trim() || !isCreating) return;
-    createFile.mutate({
-      name: newName.trim(),
-      parentId: isCreating.parentId,
-      isFolder: isCreating.isFolder,
-    });
-  };
-
-  const handleSubmitRename = () => {
-    if (!newName.trim() || !isRenaming) return;
+  const handleRenameSubmit = useCallback((name: string) => {
+    if (!renamingFile || !name.trim()) {
+      setRenamingFile(null);
+      return;
+    }
     renameFile.mutate({
-      id: isRenaming.id,
-      name: newName.trim(),
-      oldPath: isRenaming.path,
+      id: renamingFile.id,
+      name: name.trim(),
+      oldPath: renamingFile.path,
     });
-  };
+  }, [renamingFile, renameFile]);
+
+  const handleRenameCancel = useCallback(() => {
+    setRenamingFile(null);
+  }, []);
+
+  const handleDelete = useCallback((file: ProjectFile) => {
+    setDeleteConfirm(file);
+  }, []);
+
+  const handleDuplicate = useCallback((file: ProjectFile) => {
+    duplicateFile.mutate(file);
+  }, [duplicateFile]);
+
+  const handleCopyPath = useCallback((file: ProjectFile) => {
+    navigator.clipboard.writeText(file.path);
+    toast.success('Path copied to clipboard!');
+  }, []);
+
+  const handleRefresh = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['project-files', projectId] });
+    toast.success('Files refreshed!');
+  }, [queryClient, projectId]);
 
   const rootFiles = files
     .filter((f) => f.parent_id === null)
@@ -357,74 +677,63 @@ export function FileExplorer({
       return a.name.localeCompare(b.name);
     });
 
+  const isCreatingAtRoot = creationState?.parentId === null;
+
   return (
     <div className="h-full flex flex-col">
       <div className="flex items-center justify-between px-3 py-2 border-b border-border/30">
         <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
           Explorer
         </h3>
-        {canManageFiles && (
-          <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6"
-              onClick={() => handleCreate(null, false)}
-            >
-              <FilePlus className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6"
-              onClick={() => handleCreate(null, true)}
-            >
-              <FolderPlus className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        )}
+        <div className="flex items-center gap-0.5">
+          {canManageFiles && (
+            <>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                onClick={() => handleCreate(null, false)}
+                title="New File"
+              >
+                <FilePlus className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                onClick={() => handleCreate(null, true)}
+                title="New Folder"
+              >
+                <FolderPlus className="h-3.5 w-3.5" />
+              </Button>
+            </>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6"
+            onClick={handleRefresh}
+            title="Refresh"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+          </Button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-auto py-1">
-        {/* Creation input */}
-        {isCreating && isCreating.parentId === null && (
-          <div className="px-2 py-1">
-            <Input
-              autoFocus
-              placeholder={isCreating.isFolder ? 'Folder name' : 'File name'}
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleSubmitCreate();
-                if (e.key === 'Escape') setIsCreating(null);
-              }}
-              onBlur={() => {
-                if (newName.trim()) handleSubmitCreate();
-                else setIsCreating(null);
-              }}
-              className="h-7 text-sm"
-            />
-          </div>
-        )}
-
-        {/* Rename input */}
-        {isRenaming && (
-          <div className="px-2 py-1">
-            <Input
-              autoFocus
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleSubmitRename();
-                if (e.key === 'Escape') setIsRenaming(null);
-              }}
-              onBlur={() => {
-                if (newName.trim()) handleSubmitRename();
-                else setIsRenaming(null);
-              }}
-              className="h-7 text-sm"
-            />
-          </div>
+        {/* Creation input at root level */}
+        {isCreatingAtRoot && (
+          <InlineInput
+            placeholder={creationState.isFolder ? 'Folder name...' : 'File name...'}
+            onSubmit={handleCreationSubmit}
+            onCancel={handleCreationCancel}
+            depth={0}
+            icon={
+              creationState.isFolder 
+                ? <Folder className="h-4 w-4 text-amber-500 shrink-0" />
+                : <File className="h-4 w-4 text-muted-foreground shrink-0" />
+            }
+          />
         )}
 
         {rootFiles.map((file) => (
@@ -435,30 +744,77 @@ export function FileExplorer({
             selectedFileId={selectedFileId}
             onFileSelect={onFileSelect}
             onCreateFile={handleCreate}
-            onDelete={(f) => deleteFile.mutate(f)}
+            onDelete={handleDelete}
             onRename={handleRename}
+            onDuplicate={handleDuplicate}
+            onCopyPath={handleCopyPath}
+            creationState={creationState}
+            onCreationSubmit={handleCreationSubmit}
+            onCreationCancel={handleCreationCancel}
+            renamingFile={renamingFile}
+            onRenameSubmit={handleRenameSubmit}
+            onRenameCancel={handleRenameCancel}
             depth={0}
             canManageFiles={canManageFiles}
             canEdit={canEdit}
+            expandedFolders={expandedFolders}
+            toggleFolder={toggleFolder}
           />
         ))}
 
-        {files.length === 0 && !isCreating && (
-          <div className="px-3 py-4 text-center">
-            <p className="text-xs text-muted-foreground mb-2">No files yet</p>
+        {files.length === 0 && !creationState && (
+          <div className="px-3 py-6 text-center">
+            <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-sidebar-accent mb-3">
+              <FolderPlus className="h-6 w-6 text-muted-foreground" />
+            </div>
+            <p className="text-sm text-muted-foreground mb-3">No files yet</p>
             {canManageFiles && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handleCreate(null, false)}
-              >
-                <FilePlus className="h-3.5 w-3.5 mr-1" />
-                Create File
-              </Button>
+              <div className="flex items-center justify-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleCreate(null, false)}
+                >
+                  <FilePlus className="h-3.5 w-3.5 mr-1" />
+                  New File
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleCreate(null, true)}
+                >
+                  <FolderPlus className="h-3.5 w-3.5 mr-1" />
+                  New Folder
+                </Button>
+              </div>
             )}
           </div>
         )}
       </div>
+
+      {/* Delete confirmation dialog */}
+      <AlertDialog open={!!deleteConfirm} onOpenChange={() => setDeleteConfirm(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {deleteConfirm?.is_folder ? 'folder' : 'file'}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteConfirm?.is_folder 
+                ? `This will permanently delete "${deleteConfirm.name}" and all its contents.`
+                : `This will permanently delete "${deleteConfirm?.name}".`}
+              {' '}This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteConfirm && deleteFile.mutate(deleteConfirm)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
