@@ -172,26 +172,6 @@ export default function Project() {
     },
   });
 
-  // Update room password
-  const updatePassword = useMutation({
-    mutationFn: async (password: string) => {
-      if (!projectId) return;
-      const { error } = await supabase
-        .from('projects')
-        .update({ room_password: password || null })
-        .eq('id', projectId);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['project', projectId] });
-      toast.success(newPassword ? 'Password set!' : 'Password removed');
-      setNewPassword('');
-    },
-    onError: () => {
-      toast.error('Failed to update password');
-    },
-  });
-
   // Run code using edge function
   const runCode = async () => {
     setIsRunning(true);
@@ -218,15 +198,6 @@ export default function Project() {
     }
 
     setIsRunning(false);
-  };
-
-  const copyRoomCode = () => {
-    if (project?.room_code) {
-      navigator.clipboard.writeText(project.room_code);
-      setCopied(true);
-      toast.success('Room code copied!');
-      setTimeout(() => setCopied(false), 2000);
-    }
   };
 
   // Role-based permissions
