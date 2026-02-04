@@ -1,15 +1,24 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
+import { useRealtimeCode } from '@/hooks/useRealtimeCode';
 import Editor from '@monaco-editor/react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import {
   Code2,
   Play,
@@ -19,10 +28,10 @@ import {
   Terminal,
   Copy,
   Check,
-  Settings,
   Share2,
   Globe,
   Lock,
+  Key,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -47,7 +56,9 @@ export default function Project() {
   const [output, setOutput] = useState<string[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [activeUsers, setActiveUsers] = useState<{ id: string; username: string; avatar_url?: string }[]>([]);
+  const [showShareDialog, setShowShareDialog] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const saveTimeoutRef = useRef<NodeJS.Timeout>();
 
   // Fetch project
   const { data: project, isLoading } = useQuery({
@@ -65,6 +76,18 @@ export default function Project() {
     enabled: !!projectId,
   });
 
+  // Handle remote code changes
+  const handleRemoteCodeChange = useCallback((newCode: string) => {
+    setCode(newCode);
+  }, []);
+
+  // Real-time code sync
+  const { activeUsers, broadcastCode } = useRealtimeCode({
+    projectId,
+    initialCode: code,
+    onCodeChange: handleRemoteCodeChange,
+  });
+
   // Set initial code
   useEffect(() => {
     if (project?.code) {
@@ -72,7 +95,7 @@ export default function Project() {
     }
   }, [project?.code]);
 
-  // Save code mutation (debounced)
+  // Save code mutation
   const saveCode = useMutation({
     mutationFn: async (newCode: string) => {
       if (!projectId) return;
@@ -87,56 +110,32 @@ export default function Project() {
     },
   });
 
-  // Debounced save
+  // Handle code changes - broadcast and save
   const handleCodeChange = useCallback((value: string | undefined) => {
     if (value !== undefined) {
       setCode(value);
-      // Debounce save
-      const timeout = setTimeout(() => {
+      
+      // Broadcast to other users immediately
+      broadcastCode(value);
+      
+      // Debounce database save
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+      saveTimeoutRef.current = setTimeout(() => {
         saveCode.mutate(value);
       }, 1000);
-      return () => clearTimeout(timeout);
     }
-  }, [projectId]);
+  }, [broadcastCode, saveCode]);
 
-  // Set up realtime presence
+  // Clean up timeout on unmount
   useEffect(() => {
-    if (!projectId || !user) return;
-
-    const channel = supabase.channel(`project:${projectId}`);
-
-    interface PresencePayload {
-      id: string;
-      username: string;
-      avatar_url?: string;
-    }
-
-    channel
-      .on('presence', { event: 'sync' }, () => {
-        const state = channel.presenceState<PresencePayload>();
-        const users = Object.values(state).flat();
-        setActiveUsers(users.filter((u, i, arr) => arr.findIndex(x => x.id === u.id) === i));
-      })
-      .on('presence', { event: 'join' }, ({ newPresences }) => {
-        console.log('User joined:', newPresences);
-      })
-      .on('presence', { event: 'leave' }, ({ leftPresences }) => {
-        console.log('User left:', leftPresences);
-      })
-      .subscribe(async (status) => {
-        if (status === 'SUBSCRIBED') {
-          await channel.track({
-            id: user.id,
-            username: user.email?.split('@')[0] || 'Anonymous',
-            avatar_url: user.user_metadata?.avatar_url,
-          });
-        }
-      });
-
     return () => {
-      supabase.removeChannel(channel);
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
     };
-  }, [projectId, user]);
+  }, []);
 
   // Toggle public/private
   const togglePublic = useMutation({
@@ -157,65 +156,42 @@ export default function Project() {
     },
   });
 
-  // Run code
-  const runCode = () => {
+  // Update room password
+  const updatePassword = useMutation({
+    mutationFn: async (password: string) => {
+      if (!projectId) return;
+      const { error } = await supabase
+        .from('projects')
+        .update({ room_password: password || null })
+        .eq('id', projectId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+      toast.success(newPassword ? 'Password set!' : 'Password removed');
+      setNewPassword('');
+    },
+    onError: () => {
+      toast.error('Failed to update password');
+    },
+  });
+
+  // Run code using edge function
+  const runCode = async () => {
     setIsRunning(true);
-    setOutput([]);
+    setOutput(['⏳ Executing code...']);
 
     try {
-      if (project?.language === 'javascript' || project?.language === 'typescript') {
-        // Capture console.log output
-        const logs: string[] = [];
-        const originalLog = console.log;
-        console.log = (...args) => {
-          logs.push(args.map(arg => 
-            typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
-          ).join(' '));
-        };
+      const { data, error } = await supabase.functions.invoke('execute-code', {
+        body: { code, language: project?.language },
+      });
 
-        try {
-          // Execute the code
-          const result = eval(code);
-          if (result !== undefined) {
-            logs.push(`→ ${typeof result === 'object' ? JSON.stringify(result, null, 2) : result}`);
-          }
-        } catch (err) {
-          logs.push(`❌ Error: ${err instanceof Error ? err.message : String(err)}`);
-        }
-
-        console.log = originalLog;
-        setOutput(logs.length ? logs : ['✓ Code executed successfully (no output)']);
-      } else if (project?.language === 'python') {
-        setOutput([
-          '🐍 Python execution simulated',
-          '→ print() outputs would appear here',
-          '(Full Python support coming soon!)',
-        ]);
-      } else if (project?.language === 'cpp') {
-        setOutput([
-          '⚡ C++ compilation simulated',
-          '→ Compiling with g++...',
-          '→ Execution: Hello, World!',
-          '(Full C++ support coming soon!)',
-        ]);
-      } else if (project?.language === 'c') {
-        setOutput([
-          '🔧 C compilation simulated',
-          '→ Compiling with gcc...',
-          '→ Execution: Hello, World!',
-          '(Full C support coming soon!)',
-        ]);
-      } else if (project?.language === 'java') {
-        setOutput([
-          '☕ Java compilation simulated',
-          '→ Compiling with javac...',
-          '→ Execution: Hello, World!',
-          '(Full Java support coming soon!)',
-        ]);
-      } else if (project?.language === 'html') {
-        setOutput(['🌐 HTML preview would open in a new tab']);
+      if (error) {
+        setOutput([`❌ Error: ${error.message}`]);
+      } else if (data.error) {
+        setOutput([`❌ Error: ${data.error}`]);
       } else {
-        setOutput([`⚠️ Execution not supported for ${project?.language} yet`]);
+        setOutput(data.output || ['✓ Code executed successfully (no output)']);
       }
     } catch (err) {
       setOutput([`❌ Error: ${err instanceof Error ? err.message : String(err)}`]);
@@ -224,17 +200,16 @@ export default function Project() {
     setIsRunning(false);
   };
 
-  const copyShareLink = () => {
-    if (!project?.is_public) {
-      toast.error('Make the project public first to share');
-      return;
+  const copyRoomCode = () => {
+    if (project?.room_code) {
+      navigator.clipboard.writeText(project.room_code);
+      setCopied(true);
+      toast.success('Room code copied!');
+      setTimeout(() => setCopied(false), 2000);
     }
-    const url = window.location.href;
-    navigator.clipboard.writeText(url);
-    setCopied(true);
-    toast.success('Public link copied! Anyone can view this project.');
-    setTimeout(() => setCopied(false), 2000);
   };
+
+  const isOwner = user?.id === project?.owner_id;
 
   if (isLoading) {
     return (
@@ -306,7 +281,7 @@ export default function Project() {
           )}
 
           {/* Public toggle - only show for owner */}
-          {user?.id === project.owner_id && (
+          {isOwner && (
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-secondary/50 border border-border/50">
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -329,15 +304,15 @@ export default function Project() {
                 </TooltipTrigger>
                 <TooltipContent>
                   {project.is_public 
-                    ? 'Anyone with the link can view and collaborate'
+                    ? 'Anyone with the room code can join'
                     : 'Only you can access this project'}
                 </TooltipContent>
               </Tooltip>
             </div>
           )}
 
-          <Button variant="outline" size="sm" onClick={copyShareLink}>
-            {copied ? <Check className="h-4 w-4 mr-1" /> : <Share2 className="h-4 w-4 mr-1" />}
+          <Button variant="outline" size="sm" onClick={() => setShowShareDialog(true)}>
+            <Share2 className="h-4 w-4 mr-1" />
             Share
           </Button>
 
@@ -351,6 +326,62 @@ export default function Project() {
           </Button>
         </div>
       </header>
+
+      {/* Share Dialog */}
+      <Dialog open={showShareDialog} onOpenChange={setShowShareDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Share Project</DialogTitle>
+            <DialogDescription>
+              Share this room code with others to collaborate in real-time
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 mt-4">
+            <div className="space-y-2">
+              <Label>Room Code</Label>
+              <div className="flex gap-2">
+                <Input
+                  value={project.room_code || ''}
+                  readOnly
+                  className="font-mono text-lg tracking-widest"
+                />
+                <Button variant="outline" onClick={copyRoomCode}>
+                  {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Others can join using this code in the Dashboard → Join Room
+              </p>
+            </div>
+
+            {isOwner && (
+              <div className="space-y-2">
+                <Label>Room Password (optional)</Label>
+                <div className="flex gap-2">
+                  <Input
+                    type="password"
+                    placeholder={project.room_password ? '••••••••' : 'No password set'}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                  />
+                  <Button 
+                    variant="outline" 
+                    onClick={() => updatePassword.mutate(newPassword)}
+                    disabled={updatePassword.isPending}
+                  >
+                    <Key className="h-4 w-4" />
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {project.room_password 
+                    ? 'Password is required to join. Leave empty and click to remove.' 
+                    : 'Set a password to require it for joining'}
+                </p>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Main workspace */}
       <div className="flex-1 overflow-hidden">
