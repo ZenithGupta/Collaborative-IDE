@@ -45,9 +45,7 @@ export default function Project() {
   const [code, setCode] = useState('');
   const [output, setOutput] = useState<string[]>([]);
   const [isRunning, setIsRunning] = useState(false);
-  const [copied, setCopied] = useState(false);
   const [showShareDialog, setShowShareDialog] = useState(false);
-  const [newPassword, setNewPassword] = useState('');
   const [selectedFile, setSelectedFile] = useState<ProjectFile | null>(null);
   const [openTabs, setOpenTabs] = useState<ProjectFile[]>([]);
   const [sidebarTab, setSidebarTab] = useState<'files' | 'users'>('files');
