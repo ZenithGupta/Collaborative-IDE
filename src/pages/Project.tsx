@@ -225,10 +225,14 @@ export default function Project() {
   };
 
   const copyShareLink = () => {
+    if (!project?.is_public) {
+      toast.error('Make the project public first to share');
+      return;
+    }
     const url = window.location.href;
     navigator.clipboard.writeText(url);
     setCopied(true);
-    toast.success('Link copied to clipboard!');
+    toast.success('Public link copied! Anyone can view this project.');
     setTimeout(() => setCopied(false), 2000);
   };
 
