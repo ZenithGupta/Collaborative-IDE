@@ -138,6 +138,25 @@ export default function Project() {
     };
   }, [projectId, user]);
 
+  // Toggle public/private
+  const togglePublic = useMutation({
+    mutationFn: async (isPublic: boolean) => {
+      if (!projectId) return;
+      const { error } = await supabase
+        .from('projects')
+        .update({ is_public: isPublic })
+        .eq('id', projectId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+      toast.success(project?.is_public ? 'Project is now private' : 'Project is now public!');
+    },
+    onError: () => {
+      toast.error('Failed to update visibility');
+    },
+  });
+
   // Run code
   const runCode = () => {
     setIsRunning(true);
@@ -167,14 +186,33 @@ export default function Project() {
         console.log = originalLog;
         setOutput(logs.length ? logs : ['✓ Code executed successfully (no output)']);
       } else if (project?.language === 'python') {
-        // Mock Python execution
         setOutput([
           '🐍 Python execution simulated',
           '→ print() outputs would appear here',
           '(Full Python support coming soon!)',
         ]);
+      } else if (project?.language === 'cpp') {
+        setOutput([
+          '⚡ C++ compilation simulated',
+          '→ Compiling with g++...',
+          '→ Execution: Hello, World!',
+          '(Full C++ support coming soon!)',
+        ]);
+      } else if (project?.language === 'c') {
+        setOutput([
+          '🔧 C compilation simulated',
+          '→ Compiling with gcc...',
+          '→ Execution: Hello, World!',
+          '(Full C support coming soon!)',
+        ]);
+      } else if (project?.language === 'java') {
+        setOutput([
+          '☕ Java compilation simulated',
+          '→ Compiling with javac...',
+          '→ Execution: Hello, World!',
+          '(Full Java support coming soon!)',
+        ]);
       } else if (project?.language === 'html') {
-        // For HTML, we could open in a new tab
         setOutput(['🌐 HTML preview would open in a new tab']);
       } else {
         setOutput([`⚠️ Execution not supported for ${project?.language} yet`]);
