@@ -446,7 +446,9 @@ export default function Project() {
                     files={files}
                     selectedFileId={selectedFile?.id || null}
                     onFileSelect={handleFileSelect}
-                    isOwner={isOwner}
+                    canManageFiles={canManageFiles}
+                    canEdit={canEdit}
+                  />
                   />
                 ) : (
                   <div className="p-3">
