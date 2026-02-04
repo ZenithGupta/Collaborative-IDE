@@ -363,7 +363,7 @@ export function FileExplorer({
         <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
           Explorer
         </h3>
-        {isOwner && (
+        {canManageFiles && (
           <div className="flex items-center gap-1">
             <Button
               variant="ghost"
