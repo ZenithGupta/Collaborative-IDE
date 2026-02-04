@@ -40,6 +40,7 @@ const App = () => (
                 </ProtectedRoute>
               }
             />
+            <Route path="/join/:roomCode/:password" element={<JoinByLink />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
