@@ -305,6 +305,17 @@ export default function Project() {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Role indicator for collaborators */}
+          {roleInfo && !isOwner && (
+            <div className={cn(
+              'flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-secondary/50 border border-border/50',
+              roleInfo.color
+            )}>
+              <roleInfo.icon className="h-3.5 w-3.5" />
+              <span className="text-xs font-medium">{roleInfo.label}</span>
+            </div>
+          )}
+
           {/* Active users with colors */}
           <ActiveUsersPresence 
             users={activeUsers} 
