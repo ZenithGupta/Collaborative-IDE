@@ -257,6 +257,7 @@ export type Database = {
         Args: { _project_id: string; _user_id: string }
         Returns: boolean
       }
+      is_project_public: { Args: { _project_id: string }; Returns: boolean }
     }
     Enums: {
       collaborator_role: "view" | "edit" | "full_access"
