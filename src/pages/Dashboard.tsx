@@ -49,6 +49,9 @@ const DEFAULT_CODE: Record<string, string> = {
   javascript: '// Welcome to CodeVibe!\nconsole.log("Hello, World!");',
   typescript: '// Welcome to CodeVibe!\nconst greeting: string = "Hello, World!";\nconsole.log(greeting);',
   python: '# Welcome to CodeVibe!\nprint("Hello, World!")',
+  cpp: '// Welcome to CodeVibe!\n#include <iostream>\n\nint main() {\n    std::cout << "Hello, World!" << std::endl;\n    return 0;\n}',
+  c: '// Welcome to CodeVibe!\n#include <stdio.h>\n\nint main() {\n    printf("Hello, World!\\n");\n    return 0;\n}',
+  java: '// Welcome to CodeVibe!\npublic class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello, World!");\n    }\n}',
   html: '<!DOCTYPE html>\n<html>\n<head>\n  <title>CodeVibe</title>\n</head>\n<body>\n  <h1>Hello, World!</h1>\n</body>\n</html>',
   css: '/* Welcome to CodeVibe! */\nbody {\n  background: #1a1a2e;\n  color: white;\n}',
 };

@@ -26,6 +26,9 @@ const LANGUAGE_MAP: Record<string, string> = {
   javascript: 'javascript',
   typescript: 'typescript',
   python: 'python',
+  cpp: 'cpp',
+  c: 'c',
+  java: 'java',
   html: 'html',
   css: 'css',
 };
