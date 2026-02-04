@@ -8,6 +8,8 @@ import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import {
   Code2,
   Play,
@@ -19,6 +21,8 @@ import {
   Check,
   Settings,
   Share2,
+  Globe,
+  Lock,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -26,6 +30,9 @@ const LANGUAGE_MAP: Record<string, string> = {
   javascript: 'javascript',
   typescript: 'typescript',
   python: 'python',
+  cpp: 'cpp',
+  c: 'c',
+  java: 'java',
   html: 'html',
   css: 'css',
 };
@@ -131,6 +138,25 @@ export default function Project() {
     };
   }, [projectId, user]);
 
+  // Toggle public/private
+  const togglePublic = useMutation({
+    mutationFn: async (isPublic: boolean) => {
+      if (!projectId) return;
+      const { error } = await supabase
+        .from('projects')
+        .update({ is_public: isPublic })
+        .eq('id', projectId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+      toast.success(project?.is_public ? 'Project is now private' : 'Project is now public!');
+    },
+    onError: () => {
+      toast.error('Failed to update visibility');
+    },
+  });
+
   // Run code
   const runCode = () => {
     setIsRunning(true);
@@ -160,14 +186,33 @@ export default function Project() {
         console.log = originalLog;
         setOutput(logs.length ? logs : ['✓ Code executed successfully (no output)']);
       } else if (project?.language === 'python') {
-        // Mock Python execution
         setOutput([
           '🐍 Python execution simulated',
           '→ print() outputs would appear here',
           '(Full Python support coming soon!)',
         ]);
+      } else if (project?.language === 'cpp') {
+        setOutput([
+          '⚡ C++ compilation simulated',
+          '→ Compiling with g++...',
+          '→ Execution: Hello, World!',
+          '(Full C++ support coming soon!)',
+        ]);
+      } else if (project?.language === 'c') {
+        setOutput([
+          '🔧 C compilation simulated',
+          '→ Compiling with gcc...',
+          '→ Execution: Hello, World!',
+          '(Full C support coming soon!)',
+        ]);
+      } else if (project?.language === 'java') {
+        setOutput([
+          '☕ Java compilation simulated',
+          '→ Compiling with javac...',
+          '→ Execution: Hello, World!',
+          '(Full Java support coming soon!)',
+        ]);
       } else if (project?.language === 'html') {
-        // For HTML, we could open in a new tab
         setOutput(['🌐 HTML preview would open in a new tab']);
       } else {
         setOutput([`⚠️ Execution not supported for ${project?.language} yet`]);
@@ -180,10 +225,14 @@ export default function Project() {
   };
 
   const copyShareLink = () => {
+    if (!project?.is_public) {
+      toast.error('Make the project public first to share');
+      return;
+    }
     const url = window.location.href;
     navigator.clipboard.writeText(url);
     setCopied(true);
-    toast.success('Link copied to clipboard!');
+    toast.success('Public link copied! Anyone can view this project.');
     setTimeout(() => setCopied(false), 2000);
   };
 
@@ -253,6 +302,37 @@ export default function Project() {
                   </div>
                 )}
               </div>
+            </div>
+          )}
+
+          {/* Public toggle - only show for owner */}
+          {user?.id === project.owner_id && (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-secondary/50 border border-border/50">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="flex items-center gap-2">
+                    {project.is_public ? (
+                      <Globe className="h-4 w-4 text-success" />
+                    ) : (
+                      <Lock className="h-4 w-4 text-muted-foreground" />
+                    )}
+                    <Label htmlFor="public-toggle" className="text-xs cursor-pointer">
+                      {project.is_public ? 'Public' : 'Private'}
+                    </Label>
+                    <Switch
+                      id="public-toggle"
+                      checked={project.is_public}
+                      onCheckedChange={(checked) => togglePublic.mutate(checked)}
+                      disabled={togglePublic.isPending}
+                    />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {project.is_public 
+                    ? 'Anyone with the link can view and collaborate'
+                    : 'Only you can access this project'}
+                </TooltipContent>
+              </Tooltip>
             </div>
           )}
 
