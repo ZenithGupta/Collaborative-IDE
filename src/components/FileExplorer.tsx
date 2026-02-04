@@ -446,7 +446,7 @@ export function FileExplorer({
         {files.length === 0 && !isCreating && (
           <div className="px-3 py-4 text-center">
             <p className="text-xs text-muted-foreground mb-2">No files yet</p>
-            {isOwner && (
+            {canManageFiles && (
               <Button
                 variant="outline"
                 size="sm"
