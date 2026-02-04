@@ -14,6 +14,61 @@ export type Database = {
   }
   public: {
     Tables: {
+      access_requests: {
+        Row: {
+          created_at: string
+          existing_role: Database["public"]["Enums"]["collaborator_role"] | null
+          id: string
+          message: string | null
+          project_id: string
+          requested_role: Database["public"]["Enums"]["collaborator_role"]
+          responded_at: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          existing_role?:
+            | Database["public"]["Enums"]["collaborator_role"]
+            | null
+          id?: string
+          message?: string | null
+          project_id: string
+          requested_role: Database["public"]["Enums"]["collaborator_role"]
+          responded_at?: string | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          existing_role?:
+            | Database["public"]["Enums"]["collaborator_role"]
+            | null
+          id?: string
+          message?: string | null
+          project_id?: string
+          requested_role?: Database["public"]["Enums"]["collaborator_role"]
+          responded_at?: string | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "access_requests_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "access_requests_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -132,6 +187,8 @@ export type Database = {
         Row: {
           code: string | null
           created_at: string
+          edit_password: string | null
+          full_access_password: string | null
           id: string
           is_public: boolean
           language: string
@@ -140,10 +197,13 @@ export type Database = {
           room_code: string | null
           room_password: string | null
           updated_at: string
+          view_password: string | null
         }
         Insert: {
           code?: string | null
           created_at?: string
+          edit_password?: string | null
+          full_access_password?: string | null
           id?: string
           is_public?: boolean
           language?: string
@@ -152,10 +212,13 @@ export type Database = {
           room_code?: string | null
           room_password?: string | null
           updated_at?: string
+          view_password?: string | null
         }
         Update: {
           code?: string | null
           created_at?: string
+          edit_password?: string | null
+          full_access_password?: string | null
           id?: string
           is_public?: boolean
           language?: string
@@ -164,6 +227,7 @@ export type Database = {
           room_code?: string | null
           room_password?: string | null
           updated_at?: string
+          view_password?: string | null
         }
         Relationships: [
           {
@@ -183,6 +247,10 @@ export type Database = {
       generate_room_code: { Args: never; Returns: string }
       get_collaborator_role: {
         Args: { _project_id: string; _user_id: string }
+        Returns: Database["public"]["Enums"]["collaborator_role"]
+      }
+      get_role_from_password: {
+        Args: { _password: string; _project_id: string }
         Returns: Database["public"]["Enums"]["collaborator_role"]
       }
       is_project_owner: {

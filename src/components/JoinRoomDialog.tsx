@@ -13,7 +13,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Loader2, Users, Eye, Edit2, Shield } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -21,24 +20,10 @@ interface JoinRoomDialogProps {
   trigger?: React.ReactNode;
 }
 
-type CollaboratorRole = 'view' | 'edit' | 'full_access';
-
-const roleInfo: Record<CollaboratorRole, { label: string; description: string; icon: React.ReactNode }> = {
-  view: {
-    label: 'View Only',
-    description: 'Can view the project but cannot make changes',
-    icon: <Eye className="h-4 w-4" />,
-  },
-  edit: {
-    label: 'Edit Mode',
-    description: 'Can edit existing files but cannot create or delete files',
-    icon: <Edit2 className="h-4 w-4" />,
-  },
-  full_access: {
-    label: 'Full Access',
-    description: 'Can do everything including creating and deleting files',
-    icon: <Shield className="h-4 w-4" />,
-  },
+const roleInfo: Record<string, { label: string; icon: React.ReactNode }> = {
+  view: { label: 'View Only', icon: <Eye className="h-4 w-4" /> },
+  edit: { label: 'Edit Mode', icon: <Edit2 className="h-4 w-4" /> },
+  full_access: { label: 'Full Access', icon: <Shield className="h-4 w-4" /> },
 };
 
 export function JoinRoomDialog({ trigger }: JoinRoomDialogProps) {
@@ -47,7 +32,6 @@ export function JoinRoomDialog({ trigger }: JoinRoomDialogProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [roomCode, setRoomCode] = useState('');
   const [password, setPassword] = useState('');
-  const [selectedRole, setSelectedRole] = useState<CollaboratorRole>('view');
   const [isJoining, setIsJoining] = useState(false);
 
   const handleJoin = async (e: React.FormEvent) => {
@@ -55,6 +39,11 @@ export function JoinRoomDialog({ trigger }: JoinRoomDialogProps) {
     
     if (!roomCode.trim()) {
       toast.error('Please enter a room code');
+      return;
+    }
+
+    if (!password.trim()) {
+      toast.error('Please enter the access password');
       return;
     }
 
@@ -69,7 +58,7 @@ export function JoinRoomDialog({ trigger }: JoinRoomDialogProps) {
       // Find project by room code
       const { data: project, error: projectError } = await supabase
         .from('projects')
-        .select('id, room_password, owner_id')
+        .select('id, owner_id, view_password, edit_password, full_access_password')
         .eq('room_code', roomCode.toUpperCase())
         .single();
 
@@ -88,37 +77,54 @@ export function JoinRoomDialog({ trigger }: JoinRoomDialogProps) {
         return;
       }
 
-      // Verify password if set
-      if (project.room_password && project.room_password !== password) {
+      // Determine role from password
+      let role: 'view' | 'edit' | 'full_access' | null = null;
+      if (project.full_access_password === password) {
+        role = 'full_access';
+      } else if (project.edit_password === password) {
+        role = 'edit';
+      } else if (project.view_password === password) {
+        role = 'view';
+      }
+
+      if (!role) {
         toast.error('Incorrect password');
         setIsJoining(false);
         return;
       }
 
-      // Add user as collaborator with selected role
-      const { error: collabError } = await supabase
+      // Check if collaborator record exists
+      const { data: existing } = await supabase
         .from('project_collaborators')
-        .upsert({
-          project_id: project.id,
-          user_id: user.id,
-          role: selectedRole,
-        }, {
-          onConflict: 'project_id,user_id'
-        });
+        .select('id')
+        .eq('project_id', project.id)
+        .eq('user_id', user.id)
+        .maybeSingle();
 
-      if (collabError) {
-        console.error('Error joining room:', collabError);
-        toast.error('Failed to join room');
-        setIsJoining(false);
-        return;
+      if (existing) {
+        // Update existing
+        const { error: updateError } = await supabase
+          .from('project_collaborators')
+          .update({ role })
+          .eq('id', existing.id);
+        if (updateError) throw updateError;
+      } else {
+        // Insert new
+        const { error: insertError } = await supabase
+          .from('project_collaborators')
+          .insert({
+            project_id: project.id,
+            user_id: user.id,
+            role,
+          });
+        if (insertError) throw insertError;
       }
 
-      toast.success(`Joined room with ${roleInfo[selectedRole].label} access!`);
+      toast.success(`Joined with ${roleInfo[role].label} access!`);
       navigate(`/project/${project.id}`);
       setIsOpen(false);
       setRoomCode('');
       setPassword('');
-      setSelectedRole('view');
     } catch (error) {
       console.error('Join room error:', error);
       toast.error('An error occurred while joining the room');
@@ -139,9 +145,12 @@ export function JoinRoomDialog({ trigger }: JoinRoomDialogProps) {
       </DialogTrigger>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Join a Room</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            <Users className="h-5 w-5 text-primary" />
+            Join a Room
+          </DialogTitle>
           <DialogDescription>
-            Enter the room code, password (if required), and select your access level
+            Enter the room code and password shared by the project owner
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleJoin} className="space-y-4 mt-4">
@@ -152,59 +161,32 @@ export function JoinRoomDialog({ trigger }: JoinRoomDialogProps) {
               placeholder="e.g. ABC12345"
               value={roomCode}
               onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
-              className="font-mono tracking-wider"
+              className="font-mono text-lg tracking-widest text-center"
               maxLength={8}
               autoFocus
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="room-password">Password (optional)</Label>
+            <Label htmlFor="room-password">Access Password</Label>
             <Input
               id="room-password"
-              type="password"
-              placeholder="Enter password if required"
+              placeholder="Enter the password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => setPassword(e.target.value.toUpperCase())}
+              className="font-mono text-lg tracking-widest text-center"
+              maxLength={8}
             />
-          </div>
-          
-          <div className="space-y-3">
-            <Label>Access Level</Label>
-            <RadioGroup
-              value={selectedRole}
-              onValueChange={(value) => setSelectedRole(value as CollaboratorRole)}
-              className="space-y-2"
-            >
-              {(Object.entries(roleInfo) as [CollaboratorRole, typeof roleInfo[CollaboratorRole]][]).map(
-                ([role, info]) => (
-                  <label
-                    key={role}
-                    className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
-                      selectedRole === role
-                        ? 'border-primary bg-primary/5'
-                        : 'border-border hover:border-primary/50'
-                    }`}
-                  >
-                    <RadioGroupItem value={role} className="mt-0.5" />
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        {info.icon}
-                        <span className="font-medium text-sm">{info.label}</span>
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-1">{info.description}</p>
-                    </div>
-                  </label>
-                )
-              )}
-            </RadioGroup>
+            <p className="text-xs text-muted-foreground">
+              The password determines your access level (View, Edit, or Full Access)
+            </p>
           </div>
 
           <div className="flex justify-end gap-2 pt-4">
             <Button type="button" variant="outline" onClick={() => setIsOpen(false)}>
               Cancel
             </Button>
-            <Button type="submit" className="gradient-primary" disabled={isJoining}>
-              {isJoining && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            <Button type="submit" className="gradient-primary gap-2" disabled={isJoining}>
+              {isJoining && <Loader2 className="h-4 w-4 animate-spin" />}
               Join Room
             </Button>
           </div>

@@ -9,6 +9,7 @@ import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import Project from "./pages/Project";
+import JoinByLink from "./pages/JoinByLink";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -39,6 +40,7 @@ const App = () => (
                 </ProtectedRoute>
               }
             />
+            <Route path="/join/:roomCode/:password" element={<JoinByLink />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

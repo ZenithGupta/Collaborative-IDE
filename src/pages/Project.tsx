@@ -9,20 +9,14 @@ import { useCollaboratorRole } from '@/hooks/useCollaboratorRole';
 import Editor from '@monaco-editor/react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import { FileExplorer, ProjectFile } from '@/components/FileExplorer';
 import { ActiveUsersPresence, ActiveUsersSidebar } from '@/components/ActiveUsersPresence';
+import { ShareProjectDialog } from '@/components/ShareProjectDialog';
+import { RequestAccessDialog } from '@/components/RequestAccessDialog';
+import { AccessRequestsPanel } from '@/components/AccessRequestsPanel';
 import {
   Code2,
   Play,
@@ -30,12 +24,9 @@ import {
   ArrowLeft,
   Users,
   Terminal,
-  Copy,
-  Check,
   Share2,
   Globe,
   Lock,
-  Key,
   X,
   FolderTree,
   Eye,
@@ -54,9 +45,7 @@ export default function Project() {
   const [code, setCode] = useState('');
   const [output, setOutput] = useState<string[]>([]);
   const [isRunning, setIsRunning] = useState(false);
-  const [copied, setCopied] = useState(false);
   const [showShareDialog, setShowShareDialog] = useState(false);
-  const [newPassword, setNewPassword] = useState('');
   const [selectedFile, setSelectedFile] = useState<ProjectFile | null>(null);
   const [openTabs, setOpenTabs] = useState<ProjectFile[]>([]);
   const [sidebarTab, setSidebarTab] = useState<'files' | 'users'>('files');
@@ -183,26 +172,6 @@ export default function Project() {
     },
   });
 
-  // Update room password
-  const updatePassword = useMutation({
-    mutationFn: async (password: string) => {
-      if (!projectId) return;
-      const { error } = await supabase
-        .from('projects')
-        .update({ room_password: password || null })
-        .eq('id', projectId);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['project', projectId] });
-      toast.success(newPassword ? 'Password set!' : 'Password removed');
-      setNewPassword('');
-    },
-    onError: () => {
-      toast.error('Failed to update password');
-    },
-  });
-
   // Run code using edge function
   const runCode = async () => {
     setIsRunning(true);
@@ -229,15 +198,6 @@ export default function Project() {
     }
 
     setIsRunning(false);
-  };
-
-  const copyRoomCode = () => {
-    if (project?.room_code) {
-      navigator.clipboard.writeText(project.room_code);
-      setCopied(true);
-      toast.success('Room code copied!');
-      setTimeout(() => setCopied(false), 2000);
-    }
   };
 
   // Role-based permissions
@@ -354,6 +314,11 @@ export default function Project() {
             </div>
           )}
 
+          {/* Request access - for collaborators */}
+          {!isOwner && role && role !== 'full_access' && (
+            <RequestAccessDialog projectId={projectId!} currentRole={role} />
+          )}
+
           <Button variant="outline" size="sm" onClick={() => setShowShareDialog(true)}>
             <Share2 className="h-4 w-4 mr-1" />
             Share
@@ -371,60 +336,13 @@ export default function Project() {
       </header>
 
       {/* Share Dialog */}
-      <Dialog open={showShareDialog} onOpenChange={setShowShareDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Share Project</DialogTitle>
-            <DialogDescription>
-              Share this room code with others to collaborate in real-time
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 mt-4">
-            <div className="space-y-2">
-              <Label>Room Code</Label>
-              <div className="flex gap-2">
-                <Input
-                  value={project.room_code || ''}
-                  readOnly
-                  className="font-mono text-lg tracking-widest"
-                />
-                <Button variant="outline" onClick={copyRoomCode}>
-                  {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Others can join using this code in the Dashboard → Join Room
-              </p>
-            </div>
-
-            {isOwner && (
-              <div className="space-y-2">
-                <Label>Room Password (optional)</Label>
-                <div className="flex gap-2">
-                  <Input
-                    type="password"
-                    placeholder={project.room_password ? '••••••••' : 'No password set'}
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                  />
-                  <Button 
-                    variant="outline" 
-                    onClick={() => updatePassword.mutate(newPassword)}
-                    disabled={updatePassword.isPending}
-                  >
-                    <Key className="h-4 w-4" />
-                  </Button>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {project.room_password 
-                    ? 'Password is required to join. Leave empty and click to remove.' 
-                    : 'Set a password to require it for joining'}
-                </p>
-              </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+      {project && (
+        <ShareProjectDialog
+          open={showShareDialog}
+          onOpenChange={setShowShareDialog}
+          project={project}
+        />
+      )}
 
       {/* Main workspace */}
       <div className="flex-1 overflow-hidden">
@@ -464,16 +382,26 @@ export default function Project() {
               </div>
 
               {/* Tab content */}
-              <div className="flex-1 overflow-hidden">
+              <div className="flex-1 overflow-y-auto">
                 {sidebarTab === 'files' ? (
-                  <FileExplorer
-                    projectId={projectId!}
-                    files={files}
-                    selectedFileId={selectedFile?.id || null}
-                    onFileSelect={handleFileSelect}
-                    canManageFiles={canManageFiles}
-                    canEdit={canEdit}
-                  />
+                  <div className="flex flex-col h-full">
+                    {/* Access requests panel for owners */}
+                    {isOwner && (
+                      <div className="p-2 border-b border-border/30">
+                        <AccessRequestsPanel projectId={projectId!} />
+                      </div>
+                    )}
+                    <div className="flex-1 overflow-hidden">
+                      <FileExplorer
+                        projectId={projectId!}
+                        files={files}
+                        selectedFileId={selectedFile?.id || null}
+                        onFileSelect={handleFileSelect}
+                        canManageFiles={canManageFiles}
+                        canEdit={canEdit}
+                      />
+                    </div>
+                  </div>
                 ) : (
                   <div className="p-3">
                     <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
