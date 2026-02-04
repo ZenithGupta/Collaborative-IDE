@@ -38,6 +38,9 @@ const LANGUAGES = [
   { value: 'javascript', label: 'JavaScript', icon: '🟨' },
   { value: 'typescript', label: 'TypeScript', icon: '🔷' },
   { value: 'python', label: 'Python', icon: '🐍' },
+  { value: 'cpp', label: 'C++', icon: '⚡' },
+  { value: 'c', label: 'C', icon: '🔧' },
+  { value: 'java', label: 'Java', icon: '☕' },
   { value: 'html', label: 'HTML', icon: '🌐' },
   { value: 'css', label: 'CSS', icon: '🎨' },
 ];
