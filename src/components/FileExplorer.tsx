@@ -143,7 +143,7 @@ function FileTreeItem({
               </button>
             </CollapsibleTrigger>
           </ContextMenuTrigger>
-          {isOwner && (
+          {canManageFiles && (
             <ContextMenuContent>
               <ContextMenuItem onClick={() => onCreateFile(file.id, false)}>
                 <FilePlus className="h-4 w-4 mr-2" />
