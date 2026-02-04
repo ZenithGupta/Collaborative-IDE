@@ -38,6 +38,42 @@ export type Database = {
         }
         Relationships: []
       }
+      project_collaborators: {
+        Row: {
+          id: string
+          joined_at: string
+          project_id: string
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          joined_at?: string
+          project_id: string
+          user_id: string
+        }
+        Update: {
+          id?: string
+          joined_at?: string
+          project_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_collaborators_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_collaborators_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       projects: {
         Row: {
           code: string | null
@@ -47,6 +83,8 @@ export type Database = {
           language: string
           name: string
           owner_id: string
+          room_code: string | null
+          room_password: string | null
           updated_at: string
         }
         Insert: {
@@ -57,6 +95,8 @@ export type Database = {
           language?: string
           name: string
           owner_id: string
+          room_code?: string | null
+          room_password?: string | null
           updated_at?: string
         }
         Update: {
@@ -67,6 +107,8 @@ export type Database = {
           language?: string
           name?: string
           owner_id?: string
+          room_code?: string | null
+          room_password?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -84,7 +126,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      generate_room_code: { Args: never; Returns: string }
     }
     Enums: {
       [_ in never]: never
