@@ -382,16 +382,26 @@ export default function Project() {
               </div>
 
               {/* Tab content */}
-              <div className="flex-1 overflow-hidden">
+              <div className="flex-1 overflow-y-auto">
                 {sidebarTab === 'files' ? (
-                  <FileExplorer
-                    projectId={projectId!}
-                    files={files}
-                    selectedFileId={selectedFile?.id || null}
-                    onFileSelect={handleFileSelect}
-                    canManageFiles={canManageFiles}
-                    canEdit={canEdit}
-                  />
+                  <div className="flex flex-col h-full">
+                    {/* Access requests panel for owners */}
+                    {isOwner && (
+                      <div className="p-2 border-b border-border/30">
+                        <AccessRequestsPanel projectId={projectId!} />
+                      </div>
+                    )}
+                    <div className="flex-1 overflow-hidden">
+                      <FileExplorer
+                        projectId={projectId!}
+                        files={files}
+                        selectedFileId={selectedFile?.id || null}
+                        onFileSelect={handleFileSelect}
+                        canManageFiles={canManageFiles}
+                        canEdit={canEdit}
+                      />
+                    </div>
+                  </div>
                 ) : (
                   <div className="p-3">
                     <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
