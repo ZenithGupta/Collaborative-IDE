@@ -7,6 +7,7 @@ import { useRealtimeCode } from '@/hooks/useRealtimeCode';
 import { useProjectFiles } from '@/hooks/useProjectFiles';
 import { useCollaboratorRole } from '@/hooks/useCollaboratorRole';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { useAIAgent } from '@/hooks/useAIAgent';
 import Editor from '@monaco-editor/react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { Button } from '@/components/ui/button';
@@ -26,6 +27,8 @@ import { ActiveUsersPresence, ActiveUsersSidebar } from '@/components/ActiveUser
 import { ShareProjectDialog } from '@/components/ShareProjectDialog';
 import { RequestAccessDialog } from '@/components/RequestAccessDialog';
 import { AccessRequestsPanel } from '@/components/AccessRequestsPanel';
+import { AIChatPanel } from '@/components/AIChatPanel';
+import { AILockBanner } from '@/components/AILockBanner';
 import {
   Code2,
   Play,
@@ -44,6 +47,10 @@ import {
   Menu,
   PanelLeft,
   MoreVertical,
+  Sparkles,
+  Bot,
+  ChevronsLeft,
+  ChevronsRight,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -58,11 +65,13 @@ export default function Project() {
   const [code, setCode] = useState('');
   const [output, setOutput] = useState<string[]>([]);
   const [isRunning, setIsRunning] = useState(false);
+  const [stdinInput, setStdinInput] = useState('');
   const [showShareDialog, setShowShareDialog] = useState(false);
   const [selectedFile, setSelectedFile] = useState<ProjectFile | null>(null);
   const [openTabs, setOpenTabs] = useState<ProjectFile[]>([]);
-  const [sidebarTab, setSidebarTab] = useState<'files' | 'users'>('files');
+  const [sidebarTab, setSidebarTab] = useState<'files' | 'users' | 'ai'>('files');
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const saveTimeoutRef = useRef<NodeJS.Timeout>();
 
   // Fetch project
@@ -92,13 +101,57 @@ export default function Project() {
   }, []);
 
   // Real-time code sync with file context
-  const { activeUsers, broadcastCode } = useRealtimeCode({
+  const { activeUsers, broadcastCode, broadcastAILock, broadcastAIUnlock, aiLockedFiles, cancelRequests } = useRealtimeCode({
     projectId,
     currentFileId: selectedFile?.id || null,
     currentFileName: selectedFile?.name || null,
     initialCode: code,
     onCodeChange: handleRemoteCodeChange,
   });
+
+  // AI Agent
+  const aiAgent = useAIAgent({
+    projectId,
+    files,
+    selectedFileId: selectedFile?.id || null,
+  });
+
+  // Check if current file is AI-locked by another user
+  const currentFileAILock = selectedFile?.id ? aiLockedFiles.get(selectedFile.id) : undefined;
+  const isFileLocked = !!currentFileAILock;
+  const isLockedByMe = currentFileAILock?.userId === user?.id;
+
+  // Auto-create a project_file entry from legacy project.code when no files exist
+  const [migratedLegacy, setMigratedLegacy] = useState(false);
+  useEffect(() => {
+    if (!project || !projectId || files.length > 0 || migratedLegacy || filesLoading) return;
+    if (!project.code) return;
+
+    const extMap: Record<string, string> = {
+      javascript: 'js', typescript: 'ts', python: 'py', cpp: 'cpp',
+      c: 'c', java: 'java', html: 'html', css: 'css',
+    };
+    const ext = extMap[project.language] || 'txt';
+    const fileName = project.language === 'java' ? 'Main.java' : `main.${ext}`;
+
+    setMigratedLegacy(true);
+    supabase
+      .from('project_files')
+      .insert({
+        project_id: projectId,
+        name: fileName,
+        path: fileName,
+        content: project.code,
+        is_folder: false,
+      })
+      .select()
+      .single()
+      .then(({ data, error }) => {
+        if (!error && data) {
+          queryClient.invalidateQueries({ queryKey: ['project-files', projectId] });
+        }
+      });
+  }, [project, projectId, files.length, filesLoading, migratedLegacy, queryClient]);
 
   // Set initial code from selected file
   useEffect(() => {
@@ -109,6 +162,24 @@ export default function Project() {
       setCode(project.code);
     }
   }, [selectedFile, project?.code, files.length]);
+
+  // Sync editor when files are refetched (e.g. after AI changes)
+  useEffect(() => {
+    if (selectedFile && files.length > 0) {
+      const updatedFile = files.find(f => f.id === selectedFile.id);
+      if (updatedFile && updatedFile.content !== selectedFile.content) {
+        setSelectedFile(updatedFile);
+        setCode(updatedFile.content || '');
+      }
+    }
+    // Also update open tabs with fresh data
+    setOpenTabs(prev =>
+      prev.map(tab => {
+        const fresh = files.find(f => f.id === tab.id);
+        return fresh || tab;
+      })
+    );
+  }, [files]);
 
   // Handle file selection
   const handleFileSelect = useCallback((file: ProjectFile) => {
@@ -202,7 +273,7 @@ export default function Project() {
         : project?.language;
 
       const { data, error } = await supabase.functions.invoke('execute-code', {
-        body: { code, language },
+        body: { code, language, stdin: stdinInput },
       });
 
       if (error) {
@@ -263,69 +334,182 @@ export default function Project() {
     : project.language;
 
   // Sidebar content (reused for both desktop and mobile)
-  const SidebarContent = () => (
+  // Using a JSX variable instead of an inline component to prevent remounting on parent re-renders,
+  // which would destroy AIChatPanel's local input state.
+  const sidebarContent = (
     <div className="h-full flex flex-col">
-      {/* Sidebar tab switcher */}
-      <div className="flex border-b border-border/30">
-        <button
-          onClick={() => setSidebarTab('files')}
-          className={cn(
-            'flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-medium transition-colors',
-            sidebarTab === 'files' 
-              ? 'text-foreground border-b-2 border-primary' 
-              : 'text-muted-foreground hover:text-foreground'
-          )}
-        >
-          <FolderTree className="h-3.5 w-3.5" />
-          Files
-        </button>
-        <button
-          onClick={() => setSidebarTab('users')}
-          className={cn(
-            'flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-medium transition-colors relative',
-            sidebarTab === 'users' 
-              ? 'text-foreground border-b-2 border-primary' 
-              : 'text-muted-foreground hover:text-foreground'
-          )}
-        >
-          <Users className="h-3.5 w-3.5" />
-          Users
-          {activeUsers.length > 0 && (
-            <span className="absolute top-2 right-4 h-2 w-2 rounded-full bg-green-500" />
-          )}
-        </button>
-      </div>
-
-      {/* Tab content */}
-      <div className="flex-1 overflow-y-auto">
-        {sidebarTab === 'files' ? (
-          <div className="flex flex-col h-full">
-            {/* Access requests panel for owners */}
-            {isOwner && (
-              <div className="p-2 border-b border-border/30">
-                <AccessRequestsPanel projectId={projectId!} />
-              </div>
-            )}
-            <div className="flex-1 overflow-hidden">
-              <FileExplorer
-                projectId={projectId!}
-                files={files}
-                selectedFileId={selectedFile?.id || null}
-                onFileSelect={handleFileSelect}
-                canManageFiles={canManageFiles}
-                canEdit={canEdit}
-              />
-            </div>
+      {/* Sidebar tab switcher + collapse toggle */}
+      <div className="flex items-center border-b border-border/30">
+        {sidebarCollapsed ? (
+          // Collapsed: vertical icon buttons
+          <div className="flex flex-col w-full">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => { setSidebarTab('files'); setSidebarCollapsed(false); }}
+                  className={cn(
+                    'flex items-center justify-center py-2.5 transition-colors',
+                    sidebarTab === 'files' ? 'text-foreground bg-secondary/50' : 'text-muted-foreground hover:text-foreground'
+                  )}
+                >
+                  <FolderTree className="h-4 w-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right">Files</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => { setSidebarTab('users'); setSidebarCollapsed(false); }}
+                  className={cn(
+                    'flex items-center justify-center py-2.5 transition-colors relative',
+                    sidebarTab === 'users' ? 'text-foreground bg-secondary/50' : 'text-muted-foreground hover:text-foreground'
+                  )}
+                >
+                  <Users className="h-4 w-4" />
+                  {activeUsers.length > 0 && (
+                    <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-green-500" />
+                  )}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right">Users ({activeUsers.length})</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => { setSidebarTab('ai'); setSidebarCollapsed(false); }}
+                  className={cn(
+                    'flex items-center justify-center py-2.5 transition-colors relative',
+                    sidebarTab === 'ai' ? 'text-foreground bg-secondary/50' : 'text-muted-foreground hover:text-foreground'
+                  )}
+                >
+                  <Sparkles className="h-4 w-4" />
+                  {aiAgent.status === 'generating' && (
+                    <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />
+                  )}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right">AI Agent</TooltipContent>
+            </Tooltip>
+            <div className="flex-1" />
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => setSidebarCollapsed(false)}
+                  className="flex items-center justify-center py-2.5 text-muted-foreground hover:text-foreground transition-colors border-t border-border/30"
+                >
+                  <ChevronsRight className="h-4 w-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right">Expand sidebar</TooltipContent>
+            </Tooltip>
           </div>
         ) : (
-          <div className="p-3">
-            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-              Online Now ({activeUsers.length})
-            </h3>
-            <ActiveUsersSidebar users={activeUsers} currentUserId={user?.id} />
-          </div>
+          // Expanded: horizontal tabs with collapse button
+          <>
+            <button
+              onClick={() => setSidebarTab('files')}
+              className={cn(
+                'flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-medium transition-colors',
+                sidebarTab === 'files' 
+                  ? 'text-foreground border-b-2 border-primary' 
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              <FolderTree className="h-3.5 w-3.5" />
+              Files
+            </button>
+            <button
+              onClick={() => setSidebarTab('users')}
+              className={cn(
+                'flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-medium transition-colors relative',
+                sidebarTab === 'users' 
+                  ? 'text-foreground border-b-2 border-primary' 
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              <Users className="h-3.5 w-3.5" />
+              Users
+              {activeUsers.length > 0 && (
+                <span className="absolute top-2 right-4 h-2 w-2 rounded-full bg-green-500" />
+              )}
+            </button>
+            <button
+              onClick={() => setSidebarTab('ai')}
+              className={cn(
+                'flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-medium transition-colors relative',
+                sidebarTab === 'ai' 
+                  ? 'text-foreground border-b-2 border-cyan-500' 
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              AI
+              {aiAgent.status === 'generating' && (
+                <span className="absolute top-2 right-4 h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
+              )}
+            </button>
+            {!isMobile && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => setSidebarCollapsed(true)}
+                    className="px-1.5 py-2.5 text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <ChevronsLeft className="h-3.5 w-3.5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right">Collapse sidebar</TooltipContent>
+              </Tooltip>
+            )}
+          </>
         )}
       </div>
+
+      {/* Tab content (hidden when collapsed) */}
+      {!sidebarCollapsed && (
+        <div className="flex-1 overflow-y-auto">
+          {sidebarTab === 'files' ? (
+            <div className="flex flex-col h-full">
+              {/* Access requests panel for owners */}
+              {isOwner && (
+                <div className="p-2 border-b border-border/30">
+                  <AccessRequestsPanel projectId={projectId!} />
+                </div>
+              )}
+              <div className="flex-1 overflow-hidden">
+                <FileExplorer
+                  projectId={projectId!}
+                  files={files}
+                  selectedFileId={selectedFile?.id || null}
+                  onFileSelect={handleFileSelect}
+                  canManageFiles={canManageFiles}
+                  canEdit={canEdit}
+                  aiLockedFiles={aiLockedFiles}
+                />
+              </div>
+            </div>
+          ) : sidebarTab === 'users' ? (
+            <div className="p-3">
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+                Online Now ({activeUsers.length})
+              </h3>
+              <ActiveUsersSidebar users={activeUsers} currentUserId={user?.id} />
+            </div>
+          ) : (
+            <AIChatPanel
+              status={aiAgent.status}
+              messages={aiAgent.messages}
+              streamingText={aiAgent.streamingText}
+              onSubmit={aiAgent.generateCode}
+              onStop={aiAgent.stopGeneration}
+              onClear={aiAgent.clearMessages}
+              currentFileName={selectedFile?.name}
+              canEdit={canEdit}
+            />
+          )}
+        </div>
+      )}
     </div>
   );
 
@@ -348,7 +532,7 @@ export default function Project() {
                 </Button>
               </SheetTrigger>
               <SheetContent side="left" className="w-[280px] p-0">
-                <SidebarContent />
+                {sidebarContent}
               </SheetContent>
             </Sheet>
           )}
@@ -435,6 +619,23 @@ export default function Project() {
           >
             <Share2 className="h-4 w-4 sm:mr-1" />
             <span className="hidden sm:inline">Share</span>
+          </Button>
+
+          {/* AI button */}
+          <Button
+            size="sm"
+            variant="outline"
+            className={cn(
+              'hidden sm:flex gap-1 border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10',
+              aiAgent.status === 'generating' && 'animate-pulse'
+            )}
+            onClick={() => setSidebarTab('ai')}
+          >
+            <Sparkles className="h-4 w-4" />
+            <span className="hidden sm:inline">AI</span>
+            {aiAgent.status === 'generating' && (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            )}
           </Button>
 
           {/* Run button */}
@@ -538,6 +739,16 @@ export default function Project() {
               </div>
             )}
 
+            {/* AI Lock Banner (mobile) */}
+            {isFileLocked && currentFileAILock && (
+              <AILockBanner
+                lockedBy={currentFileAILock}
+                isCurrentUser={isLockedByMe}
+                onStopGeneration={aiAgent.stopGeneration}
+                onRequestCancel={() => aiAgent.sendCancelRequest(currentFileAILock.userId, selectedFile?.id || '')}
+              />
+            )}
+
             {/* Editor */}
             <div className="flex-1 min-h-0">
               {selectedFile || files.length === 0 ? (
@@ -558,7 +769,7 @@ export default function Project() {
                     lineNumbers: 'on',
                     wordWrap: 'on',
                     tabSize: 2,
-                    readOnly: !canEdit,
+                    readOnly: !canEdit || (isFileLocked && !isLockedByMe),
                   }}
                 />
               ) : (
@@ -587,14 +798,23 @@ export default function Project() {
                   <Terminal className="h-3.5 w-3.5" />
                   <span>Output</span>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-5 text-xs px-2"
-                  onClick={() => setOutput([])}
-                >
-                  Clear
-                </Button>
+                <div className="flex items-center gap-1">
+                  <input
+                    type="text"
+                    value={stdinInput}
+                    onChange={(e) => setStdinInput(e.target.value)}
+                    placeholder="stdin input..."
+                    className="h-5 px-1.5 text-[10px] bg-background border border-border/50 rounded text-foreground w-28 focus:outline-none focus:border-primary"
+                  />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-5 text-xs px-2"
+                    onClick={() => setOutput([])}
+                  >
+                    Clear
+                  </Button>
+                </div>
               </div>
               <div className="p-2 font-mono text-xs overflow-auto h-[calc(100%-32px)]">
                 {output.length === 0 ? (
@@ -615,16 +835,23 @@ export default function Project() {
           // Desktop layout - resizable panels
           <PanelGroup direction="horizontal">
             {/* Sidebar with tabs */}
-            <Panel defaultSize={18} minSize={12} maxSize={30}>
-              <div className="h-full border-r border-border/50 bg-sidebar">
-                <SidebarContent />
+            {sidebarCollapsed ? (
+              <div className="h-full border-r border-border/50 bg-sidebar w-12 flex-shrink-0 flex flex-col">
+                {sidebarContent}
               </div>
-            </Panel>
-
-            <PanelResizeHandle className="w-1 bg-border/30 hover:bg-primary/50 transition-colors" />
+            ) : (
+              <>
+                <Panel defaultSize={18} minSize={12} maxSize={30}>
+                  <div className="h-full border-r border-border/50 bg-sidebar">
+                    {sidebarContent}
+                  </div>
+                </Panel>
+                <PanelResizeHandle className="w-1 bg-border/30 hover:bg-primary/50 transition-colors" />
+              </>
+            )}
 
             {/* Editor + Terminal */}
-            <Panel defaultSize={82}>
+            <Panel defaultSize={sidebarCollapsed ? 100 : 82}>
               <PanelGroup direction="vertical">
                 {/* Editor with tabs */}
                 <Panel defaultSize={70} minSize={30}>
@@ -653,6 +880,16 @@ export default function Project() {
                       </div>
                     )}
 
+                    {/* AI Lock Banner (desktop) */}
+                    {isFileLocked && currentFileAILock && (
+                      <AILockBanner
+                        lockedBy={currentFileAILock}
+                        isCurrentUser={isLockedByMe}
+                        onStopGeneration={aiAgent.stopGeneration}
+                        onRequestCancel={() => aiAgent.sendCancelRequest(currentFileAILock.userId, selectedFile?.id || '')}
+                      />
+                    )}
+
                     {/* Monaco editor */}
                     <div className="flex-1">
                       {selectedFile || files.length === 0 ? (
@@ -679,7 +916,7 @@ export default function Project() {
                             autoClosingBrackets: 'always',
                             autoClosingQuotes: 'always',
                             formatOnPaste: true,
-                            readOnly: !canEdit,
+                            readOnly: !canEdit || (isFileLocked && !isLockedByMe),
                           }}
                         />
                       ) : (
@@ -705,14 +942,23 @@ export default function Project() {
                         <Terminal className="h-4 w-4" />
                         <span>Output</span>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 text-xs"
-                        onClick={() => setOutput([])}
-                      >
-                        Clear
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={stdinInput}
+                          onChange={(e) => setStdinInput(e.target.value)}
+                          placeholder="stdin input (for interactive programs)"
+                          className="h-6 px-2 text-xs bg-background border border-border/50 rounded text-foreground w-64 focus:outline-none focus:border-primary"
+                        />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 text-xs"
+                          onClick={() => setOutput([])}
+                        >
+                          Clear
+                        </Button>
+                      </div>
                     </div>
                     <div className="p-4 font-mono text-sm overflow-auto h-[calc(100%-41px)]">
                       {output.length === 0 ? (

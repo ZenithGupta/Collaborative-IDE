@@ -41,6 +41,7 @@ import {
   Copy,
   Clipboard,
   RefreshCw,
+  Bot,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -57,6 +58,8 @@ export interface ProjectFile {
   updated_at: string;
 }
 
+import { AILockInfo } from '@/hooks/useRealtimeCode';
+
 interface FileExplorerProps {
   projectId: string;
   files: ProjectFile[];
@@ -64,6 +67,7 @@ interface FileExplorerProps {
   onFileSelect: (file: ProjectFile) => void;
   canManageFiles: boolean;
   canEdit: boolean;
+  aiLockedFiles?: Map<string, AILockInfo>;
 }
 
 interface CreationState {
@@ -444,6 +448,7 @@ export function FileExplorer({
   onFileSelect,
   canManageFiles,
   canEdit,
+  aiLockedFiles,
 }: FileExplorerProps) {
   const queryClient = useQueryClient();
   const [creationState, setCreationState] = useState<CreationState | null>(null);
