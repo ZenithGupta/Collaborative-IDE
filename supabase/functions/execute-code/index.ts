@@ -26,7 +26,7 @@ serve(async (req) => {
   }
 
   try {
-    const { code, language } = await req.json();
+    const { code, language, stdin: userStdin } = await req.json();
 
     console.log(`[execute-code] Received request for language: ${language}`);
     console.log(`[execute-code] Code length: ${code?.length || 0} chars`);
@@ -63,7 +63,7 @@ serve(async (req) => {
             content: code,
           },
         ],
-        stdin: "",
+        stdin: userStdin || "",
         args: [],
         compile_timeout: 10000,
         run_timeout: 5000,
