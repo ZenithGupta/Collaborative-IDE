@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { QRCodeSVG } from 'qrcode.react';
 
 interface ShareProjectDialogProps {
   open: boolean;
@@ -155,8 +156,8 @@ export function ShareProjectDialog({ open, onOpenChange, project }: ShareProject
 
   const getShareLink = (level: AccessLevel) => {
     const password = fullProject?.[`${level}_password`];
-    if (!fullProject?.room_code || !password) return null;
-    return `${window.location.origin}/join/${fullProject.room_code}/${password}`;
+    if (!fullProject || !password) return null;
+    return `${window.location.origin}/join/${fullProject.id}/${password}`;
   };
 
   const getPassword = (level: AccessLevel) => {
@@ -189,21 +190,21 @@ export function ShareProjectDialog({ open, onOpenChange, project }: ShareProject
           </div>
         ) : (
           <div className="space-y-6 mt-4">
-            {/* Room Code */}
+            {/* Project ID */}
             <div className="p-4 rounded-xl bg-gradient-to-r from-primary/10 to-accent/10 border border-primary/20">
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label className="text-xs text-muted-foreground uppercase tracking-wider">Room Code</Label>
-                  <p className="font-mono text-2xl tracking-[0.3em] text-primary font-bold mt-1">
-                    {fullProject?.room_code}
+              <div className="flex items-center justify-between gap-4">
+                <div className="overflow-hidden flex-1">
+                  <Label className="text-xs text-muted-foreground uppercase tracking-wider">Project ID</Label>
+                  <p className="font-mono text-sm sm:text-base tracking-wider text-primary font-bold mt-1 truncate">
+                    {fullProject?.id}
                   </p>
                 </div>
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => copyToClipboard(fullProject?.room_code || '', 'room_code')}
+                  onClick={() => copyToClipboard(fullProject?.id || '', 'project_id')}
                 >
-                  {copiedField === 'room_code' ? (
+                  {copiedField === 'project_id' ? (
                     <Check className="h-4 w-4" />
                   ) : (
                     <Copy className="h-4 w-4" />
@@ -283,7 +284,7 @@ export function ShareProjectDialog({ open, onOpenChange, project }: ShareProject
                     </div>
                   </div>
 
-                  {/* Shareable Link */}
+                  {/* Shareable Link & QR Code */}
                   <div className="space-y-2">
                     <Label className="flex items-center gap-2">
                       <Link2 className="h-3.5 w-3.5" />
@@ -312,6 +313,18 @@ export function ShareProjectDialog({ open, onOpenChange, project }: ShareProject
                     <p className="text-xs text-muted-foreground">
                       Anyone with this link can join with <span className={level.color}>{level.label}</span> permissions
                     </p>
+                    
+                    {getShareLink(level.key) && (
+                      <div className="mt-4 flex flex-col items-center justify-center p-4 bg-white rounded-lg border">
+                        <QRCodeSVG 
+                          value={getShareLink(level.key)!} 
+                          size={160} 
+                          level="M" 
+                          includeMargin 
+                        />
+                        <p className="text-xs text-slate-500 mt-2 font-medium">Scan to join on mobile</p>
+                      </div>
+                    )}
                   </div>
                 </TabsContent>
               ))}

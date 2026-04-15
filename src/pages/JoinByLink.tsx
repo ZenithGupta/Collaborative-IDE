@@ -30,7 +30,7 @@ const roleInfo: Record<string, { label: string; description: string; icon: React
 };
 
 export default function JoinByLink() {
-  const { roomCode, password } = useParams();
+  const { projectId, password } = useParams();
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
   const [isJoining, setIsJoining] = useState(false);
@@ -38,6 +38,7 @@ export default function JoinByLink() {
     id: string;
     name: string;
     role: string;
+    provisionalId: string | null;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -45,44 +46,81 @@ export default function JoinByLink() {
   // Validate link and get project info
   useEffect(() => {
     const validateLink = async () => {
-      if (!roomCode || !password) {
+      if (!projectId || !password) {
         setError('Invalid link');
+        setIsLoading(false);
+        return;
+      }
+      
+      // If user is not logged in, we cannot use the provisional trick
+      // They must login first to get a user.id
+      if (!user) {
         setIsLoading(false);
         return;
       }
 
       try {
-        // Find project by room code
+        // 1. Check if they are already a collaborator to unlock RLS
+        const { data: existingCollab } = await supabase
+          .from('project_collaborators')
+          .select('id, role')
+          .eq('project_id', projectId)
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        let provisionalId = existingCollab?.id;
+        
+        if (!existingCollab) {
+           const { data: inserted, error: insertErr } = await supabase
+             .from('project_collaborators')
+             .insert({
+                project_id: projectId,
+                user_id: user.id,
+                role: 'view' // provisional
+             })
+             .select()
+             .single();
+           if (insertErr) throw insertErr;
+           provisionalId = inserted.id;
+        }
+
+        // 2. Now RLS allows us to fetch the project passwords
         const { data: project, error: projectError } = await supabase
           .from('projects')
           .select('id, name, owner_id, view_password, edit_password, full_access_password')
-          .eq('room_code', roomCode.toUpperCase())
+          .eq('id', projectId)
           .single();
 
         if (projectError || !project) {
+          if (!existingCollab && provisionalId) {
+             await supabase.from('project_collaborators').delete().eq('id', provisionalId);
+          }
           setError('Project not found. The link may be invalid or expired.');
           setIsLoading(false);
           return;
         }
 
-        // Determine role from password
-        let role: string | null = null;
+        // 3. Validate password
+        let matchedRole: string | null = null;
         if (project.full_access_password === password) {
-          role = 'full_access';
+          matchedRole = 'full_access';
         } else if (project.edit_password === password) {
-          role = 'edit';
+          matchedRole = 'edit';
         } else if (project.view_password === password) {
-          role = 'view';
+          matchedRole = 'view';
         }
 
-        if (!role) {
+        if (!matchedRole) {
+          if (!existingCollab && provisionalId) {
+             await supabase.from('project_collaborators').delete().eq('id', provisionalId);
+          }
           setError('Invalid password. Please check your link.');
           setIsLoading(false);
           return;
         }
 
         // Check if user is already the owner
-        if (user && project.owner_id === user.id) {
+        if (project.owner_id === user.id) {
           toast.info('This is your own project!');
           navigate(`/project/${project.id}`);
           return;
@@ -91,9 +129,11 @@ export default function JoinByLink() {
         setProjectInfo({
           id: project.id,
           name: project.name,
-          role,
+          role: matchedRole,
+          provisionalId: !existingCollab ? provisionalId || null : null
         });
       } catch (err) {
+        console.error(err);
         setError('Failed to validate link');
       }
 
@@ -103,7 +143,7 @@ export default function JoinByLink() {
     if (!authLoading) {
       validateLink();
     }
-  }, [roomCode, password, user, authLoading, navigate]);
+  }, [projectId, password, user, authLoading, navigate]);
 
   const handleJoin = async () => {
     if (!user || !projectInfo) return;
@@ -111,31 +151,28 @@ export default function JoinByLink() {
     setIsJoining(true);
 
     try {
-      // Check if collaborator record exists
-      const { data: existing } = await supabase
-        .from('project_collaborators')
-        .select('id')
-        .eq('project_id', projectInfo.id)
-        .eq('user_id', user.id)
-        .maybeSingle();
-
-      if (existing) {
-        // Update existing
+      // Since we already might have a provisional insert, update to the actual matched role
+      if (projectInfo.provisionalId) {
         const { error: updateError } = await supabase
           .from('project_collaborators')
           .update({ role: projectInfo.role as 'view' | 'edit' | 'full_access' })
-          .eq('id', existing.id);
+          .eq('id', projectInfo.provisionalId);
         if (updateError) throw updateError;
       } else {
-        // Insert new
-        const { error: insertError } = await supabase
+        // We already existed as a collaborator, maybe just update our role if this link provides higher access
+        const { data: existing } = await supabase
           .from('project_collaborators')
-          .insert({
-            project_id: projectInfo.id,
-            user_id: user.id,
-            role: projectInfo.role as 'view' | 'edit' | 'full_access',
-          });
-        if (insertError) throw insertError;
+          .select('id, role')
+          .eq('project_id', projectInfo.id)
+          .eq('user_id', user.id)
+          .single();
+
+        if (existing && existing.role !== 'full_access' && projectInfo.role !== existing.role) {
+          await supabase
+            .from('project_collaborators')
+            .update({ role: projectInfo.role as 'view' | 'edit' | 'full_access' })
+            .eq('id', existing.id);
+        }
       }
 
       toast.success(`Joined with ${roleInfo[projectInfo.role].label} access!`);
@@ -186,7 +223,7 @@ export default function JoinByLink() {
             </div>
             <CardTitle>Sign in Required</CardTitle>
             <CardDescription>
-              You need to sign in to join "{projectInfo?.name}"
+              You need to sign in to join this project.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -206,7 +243,7 @@ export default function JoinByLink() {
             )}
             <Button 
               className="w-full gradient-primary" 
-              onClick={() => navigate(`/auth?redirect=/join/${roomCode}/${password}`)}
+              onClick={() => navigate(`/auth?redirect=/join/${projectId}/${password}`)}
             >
               <LogIn className="mr-2 h-4 w-4" />
               Sign in to Join

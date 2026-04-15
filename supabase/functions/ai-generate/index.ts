@@ -208,7 +208,7 @@ serve(async (req) => {
       );
     }
 
-    const { prompt, projectId, fileId, allFiles, model: requestedModel } = await req.json();
+    const { prompt, projectId, fileId, allFiles, model: requestedModel, reviewMode } = await req.json();
 
     if (!prompt || !projectId) {
       return new Response(
@@ -368,9 +368,20 @@ serve(async (req) => {
           try {
             const parsed = extractJSON(fullResponse);
             const fileChanges = parsed.file_changes || [];
-            const affectedFiles: { id: string; name: string; action: string }[] = [];
+            const affectedFiles: { id: string | null; name: string; action: string; content?: string }[] = [];
 
             for (const change of fileChanges) {
+              if (reviewMode) {
+                // Return code immediately to frontend, skip DB save
+                affectedFiles.push({ 
+                  id: change.file_id || null, 
+                  name: change.file_name, 
+                  action: change.action,
+                  content: change.content 
+                });
+                continue;
+              }
+
               if (change.action === "edit" && change.file_id) {
                 const { error: updateError } = await supabaseAdmin
                   .from("project_files")

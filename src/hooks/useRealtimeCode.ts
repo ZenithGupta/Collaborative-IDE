@@ -4,12 +4,19 @@ import { useAuth } from '@/hooks/useAuth';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { toast } from 'sonner';
 
+export interface CursorPosition {
+  lineNumber: number;
+  column: number;
+}
+
 interface ActiveUser {
   id: string;
   username: string;
   avatar_url?: string;
   isTyping?: boolean;
   currentFile?: string;
+  currentFileId?: string;
+  cursorPosition?: CursorPosition;
 }
 
 export interface AILockInfo {
@@ -67,12 +74,21 @@ export function useRealtimeCode({
       fileId: string | null;
     }
 
+    interface CursorPayload {
+      userId: string;
+      username: string;
+      fileId: string | null;
+      cursorPosition: CursorPosition;
+    }
+
     interface PresencePayload {
       id: string;
       username: string;
       avatar_url?: string;
       isTyping?: boolean;
       currentFile?: string;
+      currentFileId?: string;
+      cursorPosition?: CursorPosition;
     }
 
     // Listen for code broadcasts from other users
@@ -87,6 +103,20 @@ export function useRealtimeCode({
           isLocalChangeRef.current = false;
         }, 50);
       }
+    });
+
+    // Listen for cursor position broadcasts from other users
+    channel.on('broadcast', { event: 'cursor_update' }, (payload) => {
+      const data = payload.payload as CursorPayload;
+      if (data.userId === user.id) return;
+
+      setActiveUsers(prev =>
+        prev.map(u =>
+          u.id === data.userId
+            ? { ...u, cursorPosition: data.cursorPosition, currentFileId: data.fileId || undefined }
+            : u
+        )
+      );
     });
 
     // AI Lock: another user started AI generation on a file
@@ -256,6 +286,22 @@ export function useRealtimeCode({
     });
   }, [user, currentFileId, currentFileName]);
 
+  // Broadcast cursor position to other users
+  const broadcastCursor = useCallback((position: CursorPosition) => {
+    if (!channelRef.current || !user) return;
+
+    channelRef.current.send({
+      type: 'broadcast',
+      event: 'cursor_update',
+      payload: {
+        userId: user.id,
+        username: user.email?.split('@')[0] || 'Anonymous',
+        fileId: currentFileId,
+        cursorPosition: position,
+      },
+    });
+  }, [user, currentFileId]);
+
   // Broadcast AI lock/unlock events
   const broadcastAILock = useCallback((fileIds: string[], sessionId: string) => {
     if (!channelRef.current || !user) return;
@@ -303,6 +349,7 @@ export function useRealtimeCode({
   return {
     activeUsers,
     broadcastCode,
+    broadcastCursor,
     broadcastAILock,
     broadcastAIUnlock,
     aiLockedFiles,

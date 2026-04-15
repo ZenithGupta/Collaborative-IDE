@@ -30,15 +30,15 @@ export function JoinRoomDialog({ trigger }: JoinRoomDialogProps) {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
-  const [roomCode, setRoomCode] = useState('');
+  const [projectId, setProjectId] = useState('');
   const [password, setPassword] = useState('');
   const [isJoining, setIsJoining] = useState(false);
 
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!roomCode.trim()) {
-      toast.error('Please enter a room code');
+    if (!projectId.trim()) {
+      toast.error('Please enter a Project ID');
       return;
     }
 
@@ -55,15 +55,42 @@ export function JoinRoomDialog({ trigger }: JoinRoomDialogProps) {
     setIsJoining(true);
 
     try {
-      // Find project by room code
+      // 1. Check if they are already a collaborator to unlock RLS
+      const { data: existingCollab } = await supabase
+        .from('project_collaborators')
+        .select('id, role')
+        .eq('project_id', projectId)
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      let provisionalId = existingCollab?.id;
+      
+      if (!existingCollab) {
+         const { data: inserted, error: insertErr } = await supabase
+           .from('project_collaborators')
+           .insert({
+              project_id: projectId.trim(),
+              user_id: user.id,
+              role: 'view' // provisional
+           })
+           .select()
+           .single();
+         if (insertErr) throw insertErr;
+         provisionalId = inserted.id;
+      }
+
+      // 2. Now that RLS permits, fetch the project details and passwords
       const { data: project, error: projectError } = await supabase
         .from('projects')
         .select('id, owner_id, view_password, edit_password, full_access_password')
-        .eq('room_code', roomCode.toUpperCase())
+        .eq('id', projectId.trim())
         .single();
 
       if (projectError || !project) {
-        toast.error('Room not found. Please check the room code.');
+        if (!existingCollab && provisionalId) {
+           await supabase.from('project_collaborators').delete().eq('id', provisionalId);
+        }
+        toast.error('Project not found. Please check the Project ID.');
         setIsJoining(false);
         return;
       }
@@ -77,57 +104,46 @@ export function JoinRoomDialog({ trigger }: JoinRoomDialogProps) {
         return;
       }
 
-      // Determine role from password
-      let role: 'view' | 'edit' | 'full_access' | null = null;
+      // 3. Validate password
+      let matchedRole: 'view' | 'edit' | 'full_access' | null = null;
       if (project.full_access_password === password) {
-        role = 'full_access';
+        matchedRole = 'full_access';
       } else if (project.edit_password === password) {
-        role = 'edit';
+        matchedRole = 'edit';
       } else if (project.view_password === password) {
-        role = 'view';
+        matchedRole = 'view';
       }
 
-      if (!role) {
+      if (!matchedRole) {
+        if (!existingCollab && provisionalId) {
+           await supabase.from('project_collaborators').delete().eq('id', provisionalId);
+        }
         toast.error('Incorrect password');
         setIsJoining(false);
         return;
       }
 
-      // Check if collaborator record exists
-      const { data: existing } = await supabase
-        .from('project_collaborators')
-        .select('id')
-        .eq('project_id', project.id)
-        .eq('user_id', user.id)
-        .maybeSingle();
+      const role = matchedRole;
 
-      if (existing) {
-        // Update existing
-        const { error: updateError } = await supabase
-          .from('project_collaborators')
-          .update({ role })
-          .eq('id', existing.id);
-        if (updateError) throw updateError;
-      } else {
-        // Insert new
-        const { error: insertError } = await supabase
-          .from('project_collaborators')
-          .insert({
-            project_id: project.id,
-            user_id: user.id,
-            role,
-          });
-        if (insertError) throw insertError;
+      // Update to correct role if different (from provisional or existing)
+      if (provisionalId) {
+        if (!existingCollab || (existingCollab && existingCollab.role !== 'full_access' && role !== existingCollab.role)) {
+          const { error: updateError } = await supabase
+            .from('project_collaborators')
+            .update({ role })
+            .eq('id', provisionalId);
+          if (updateError) throw updateError;
+        }
       }
 
       toast.success(`Joined with ${roleInfo[role].label} access!`);
       navigate(`/project/${project.id}`);
       setIsOpen(false);
-      setRoomCode('');
+      setProjectId('');
       setPassword('');
     } catch (error) {
       console.error('Join room error:', error);
-      toast.error('An error occurred while joining the room');
+      toast.error('An error occurred while joining the project');
     }
 
     setIsJoining(false);
@@ -155,14 +171,13 @@ export function JoinRoomDialog({ trigger }: JoinRoomDialogProps) {
         </DialogHeader>
         <form onSubmit={handleJoin} className="space-y-4 mt-4">
           <div className="space-y-2">
-            <Label htmlFor="room-code">Room Code</Label>
+            <Label htmlFor="project-id">Project ID</Label>
             <Input
-              id="room-code"
-              placeholder="e.g. ABC12345"
-              value={roomCode}
-              onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
-              className="font-mono text-lg tracking-widest text-center"
-              maxLength={8}
+              id="project-id"
+              placeholder="e.g. 123e4567-e89b-..."
+              value={projectId}
+              onChange={(e) => setProjectId(e.target.value)}
+              className="font-mono text-sm tracking-wide text-center"
               autoFocus
             />
           </div>
