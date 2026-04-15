@@ -133,6 +133,17 @@
     font-family: 'Inter', sans-serif;
   }
 
+  .material-symbols-outlined {
+    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  }
+  .glass-panel {
+    background: rgba(25, 37, 64, 0.6);
+    backdrop-filter: blur(12px);
+  }
+  .glow-border:hover {
+    box-shadow: 0 0 20px rgba(186, 158, 255, 0.2);
+  }
+
   .gradient-primary {
     background: var(--gradient-primary);
   }

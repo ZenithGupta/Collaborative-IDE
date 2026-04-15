@@ -33,6 +33,7 @@ interface AIChatPanelProps {
   onClear: () => void;
   currentFileName?: string | null;
   canEdit: boolean;
+  onReviewCode?: (code: string, fileName: string) => void;
 }
 
 export function AIChatPanel({
@@ -44,6 +45,7 @@ export function AIChatPanel({
   onClear,
   currentFileName,
   canEdit,
+  onReviewCode,
 }: AIChatPanelProps) {
   const [input, setInput] = useState('');
   const [selectedModel, setSelectedModel] = useState('gemini-2.5-flash');
@@ -162,7 +164,7 @@ export function AIChatPanel({
         ) : (
           <div className="space-y-3">
             {messages.map((msg) => (
-              <MessageBubble key={msg.id} message={msg} />
+              <MessageBubble key={msg.id} message={msg} onReviewCode={onReviewCode} />
             ))}
             <div ref={messagesEndRef} />
           </div>
@@ -272,7 +274,7 @@ export function AIChatPanel({
 }
 
 // Individual message bubble
-function MessageBubble({ message }: { message: AIMessage }) {
+function MessageBubble({ message, onReviewCode }: { message: AIMessage; onReviewCode?: (code: string, fileName: string) => void }) {
   const [expanded, setExpanded] = useState(false);
   const isUser = message.role === 'user';
   const isGenerating = message.status === 'generating';
@@ -352,6 +354,14 @@ function MessageBubble({ message }: { message: AIMessage }) {
                 <span className="text-muted-foreground/50">
                   ({f.action === 'create' ? 'new' : 'edited'})
                 </span>
+                {f.content && onReviewCode && (
+                  <button 
+                    onClick={() => onReviewCode(f.content!, f.name)}
+                    className="ml-auto text-[10px] bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 px-2 py-0.5 rounded border border-cyan-500/30 transition-colors"
+                  >
+                    Review
+                  </button>
+                )}
               </div>
             ))}
           </div>

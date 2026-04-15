@@ -1,6 +1,7 @@
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import { CursorPosition } from '@/hooks/useRealtimeCode';
 
 export interface ActiveUser {
   id: string;
@@ -9,6 +10,8 @@ export interface ActiveUser {
   color?: string;
   isTyping?: boolean;
   currentFile?: string;
+  currentFileId?: string;
+  cursorPosition?: CursorPosition;
 }
 
 // Distinct colors for user presence
@@ -35,9 +38,10 @@ interface ActiveUsersPresenceProps {
   users: ActiveUser[];
   currentUserId?: string;
   className?: string;
+  onFollowUser?: (user: ActiveUser) => void;
 }
 
-export function ActiveUsersPresence({ users, currentUserId, className }: ActiveUsersPresenceProps) {
+export function ActiveUsersPresence({ users, currentUserId, className, onFollowUser }: ActiveUsersPresenceProps) {
   // Filter out current user and assign colors
   const otherUsers = users
     .filter((u) => u.id !== currentUserId)
@@ -54,7 +58,10 @@ export function ActiveUsersPresence({ users, currentUserId, className }: ActiveU
         {otherUsers.slice(0, 4).map((user) => (
           <Tooltip key={user.id}>
             <TooltipTrigger asChild>
-              <div className="relative">
+              <div
+                className="relative cursor-pointer"
+                onClick={() => onFollowUser?.(user)}
+              >
                 <Avatar
                   className="h-7 w-7 border-2 transition-transform hover:scale-110 hover:z-10"
                   style={{ borderColor: user.color }}
@@ -131,9 +138,10 @@ export function ActiveUsersPresence({ users, currentUserId, className }: ActiveU
 interface ActiveUsersSidebarProps {
   users: ActiveUser[];
   currentUserId?: string;
+  onFollowUser?: (user: ActiveUser) => void;
 }
 
-export function ActiveUsersSidebar({ users, currentUserId }: ActiveUsersSidebarProps) {
+export function ActiveUsersSidebar({ users, currentUserId, onFollowUser }: ActiveUsersSidebarProps) {
   const displayUsers = users.map((u) => ({
     ...u,
     color: getUserColor(u.id),
@@ -147,8 +155,10 @@ export function ActiveUsersSidebar({ users, currentUserId }: ActiveUsersSidebarP
           key={user.id}
           className={cn(
             'flex items-center gap-2 p-2 rounded-md transition-colors',
-            'hover:bg-sidebar-accent'
+            'hover:bg-sidebar-accent',
+            !user.isCurrentUser && 'cursor-pointer'
           )}
+          onClick={() => !user.isCurrentUser && onFollowUser?.(user)}
         >
           <div className="relative">
             <Avatar className="h-6 w-6" style={{ borderColor: user.color }}>

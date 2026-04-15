@@ -150,7 +150,7 @@ function InlineInput({ placeholder, onSubmit, onCancel, depth, icon }: InlineInp
 
   return (
     <div
-      className="flex items-center gap-1 px-2 py-0.5"
+      className="flex items-center gap-1 px-2 py-0.5 max-md:py-2.5 max-md:min-h-[44px]"
       style={{ paddingLeft: `${depth * 12 + 20}px` }}
     >
       {icon}
@@ -224,7 +224,7 @@ function FileTreeItem({
   if (isRenaming) {
     return (
       <div
-        className="flex items-center gap-1 px-2 py-0.5"
+        className="flex items-center gap-1 px-2 py-0.5 max-md:py-2.5 max-md:min-h-[44px]"
         style={{ paddingLeft: `${depth * 12 + (file.is_folder ? 8 : 20)}px` }}
       >
         {file.is_folder && <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />}
@@ -259,7 +259,7 @@ function FileTreeItem({
             <CollapsibleTrigger asChild>
               <button
                 className={cn(
-                  'w-full flex items-center gap-1 px-2 py-1 rounded-sm text-sm hover:bg-sidebar-accent transition-colors',
+                  'w-full flex items-center gap-1 px-2 py-1 max-md:py-2.5 max-md:min-h-[44px] rounded-sm text-sm hover:bg-sidebar-accent transition-colors',
                   'text-left group'
                 )}
                 style={{ paddingLeft: `${depth * 12 + 8}px` }}
@@ -386,7 +386,7 @@ function FileTreeItem({
         <button
           onClick={() => onFileSelect(file)}
           className={cn(
-            'w-full flex items-center gap-2 px-2 py-1 rounded-sm text-sm hover:bg-sidebar-accent transition-colors',
+            'w-full flex items-center gap-2 px-2 py-1 max-md:py-2.5 max-md:min-h-[44px] rounded-sm text-sm hover:bg-sidebar-accent transition-colors',
             'text-left group',
             selectedFileId === file.id && 'bg-sidebar-accent text-sidebar-accent-foreground'
           )}
@@ -676,7 +676,7 @@ export function FileExplorer({
   }, [queryClient, projectId]);
 
   const rootFiles = files
-    .filter((f) => f.parent_id === null)
+    .filter((f) => f.parent_id === null && !f.name.startsWith('.codevibe'))
     .sort((a, b) => {
       if (a.is_folder !== b.is_folder) return a.is_folder ? -1 : 1;
       return a.name.localeCompare(b.name);

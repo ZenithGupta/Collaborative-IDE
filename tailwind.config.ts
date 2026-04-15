@@ -77,6 +77,27 @@ export default {
           DEFAULT: "hsl(var(--warning))",
           foreground: "hsl(var(--warning-foreground))",
         },
+        neon: {
+          primary: "#ba9eff",
+          secondary: "#699cff",
+          tertiary: "#ff97b5",
+          "primary-container": "#ae8dff",
+          "secondary-dim": "#699cff",
+          "tertiary-dim": "#f0779d",
+          surface: "#060e20",
+          "on-surface": "#dee5ff",
+          "surface-variant": "#192540",
+          "on-surface-variant": "#a3aac4",
+          "surface-bright": "#1f2b49",
+          "surface-container-high": "#141f38",
+          "surface-container-low": "#091328",
+          "surface-container-lowest": "#000000",
+          outline: "#6d758c",
+          "outline-variant": "#40485d",
+          "on-primary": "#39008c",
+          error: "#ff6e84",
+          "on-secondary": "#001e4a",
+        }
       },
       borderRadius: {
         lg: "var(--radius)",
@@ -86,6 +107,9 @@ export default {
       fontFamily: {
         sans: ["Inter", "sans-serif"],
         mono: ["JetBrains Mono", "monospace"],
+        headline: ["Manrope", "sans-serif"],
+        body: ["Inter", "sans-serif"],
+        label: ["Space Grotesk", "sans-serif"],
       },
       keyframes: {
         "accordion-down": {

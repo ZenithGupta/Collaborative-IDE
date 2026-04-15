@@ -8,9 +8,10 @@ import { toast } from 'sonner';
 export type AISessionStatus = 'idle' | 'generating' | 'completed' | 'cancelled' | 'failed';
 
 export interface AIAffectedFile {
-  id: string;
+  id: string | null;
   name: string;
   action: 'edit' | 'create';
+  content?: string;
 }
 
 export interface AIMessage {
@@ -96,6 +97,7 @@ export function useAIAgent({ projectId, files, selectedFileId }: UseAIAgentOptio
             fileId: selectedFileId,
             allFiles,
             model,
+            reviewMode: true,
           }),
           signal: abortController.signal,
         }
@@ -160,14 +162,15 @@ export function useAIAgent({ projectId, files, selectedFileId }: UseAIAgentOptio
                 setStatus('completed');
                 setCurrentSessionId(null);
 
-                // Refresh project files to pick up AI changes
+                // We do NOT invalidate queries here because it's reviewMode
+                // which means the changes haven't been applied to the DB yet!
                 if (event.affectedFiles?.length > 0) {
-                  queryClient.invalidateQueries({ queryKey: ['project-files', projectId] });
-
                   const fileNames = event.affectedFiles.map((f: AIAffectedFile) =>
                     `${f.action === 'create' ? '✨' : '✏️'} ${f.name}`
                   ).join(', ');
-                  toast.success(`AI completed: ${fileNames}`);
+                  toast.success(`AI proposed changes for: ${fileNames}. Please review!`, {
+                    duration: 5000,
+                  });
                 }
                 break;
 

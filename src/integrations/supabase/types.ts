@@ -258,6 +258,23 @@ export type Database = {
         Returns: boolean
       }
       is_project_public: { Args: { _project_id: string }; Returns: boolean }
+      validate_room_invite: {
+        Args: { _room_code: string; _password: string }
+        Returns: {
+          project_id: string
+          project_name: string
+          owner_id: string
+          matched_role: Database["public"]["Enums"]["collaborator_role"] | null
+        }[]
+      }
+      lookup_project_by_room_code: {
+        Args: { _room_code: string }
+        Returns: {
+          project_id: string
+          project_name: string
+          owner_id: string
+        }[]
+      }
     }
     Enums: {
       collaborator_role: "view" | "edit" | "full_access"
