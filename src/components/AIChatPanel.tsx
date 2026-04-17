@@ -19,9 +19,10 @@ import { AIMessage, AISessionStatus, AIAffectedFile } from '@/hooks/useAIAgent';
 
 const AI_MODELS = [
   { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', tag: 'default' },
-  { value: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash', tag: '' },
-  { value: 'qwen3-coder', label: 'Qwen3 Coder', tag: 'free' },
-  { value: 'gemma-4-26b', label: 'Gemma 4 26B', tag: 'free' },
+  { value: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro', tag: 'smart' },
+  { value: 'llama-3-8b', label: 'Llama 3 8B', tag: 'free' },
+  { value: 'mistral-7b', label: 'Mistral 7B', tag: 'free' },
+  { value: 'qwen3-coder', label: 'Qwen 2.5 Coder', tag: 'free' },
 ];
 
 interface AIChatPanelProps {

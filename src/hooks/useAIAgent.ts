@@ -97,7 +97,7 @@ export function useAIAgent({ projectId, files, selectedFileId }: UseAIAgentOptio
             fileId: selectedFileId,
             allFiles,
             model,
-            reviewMode: true,
+            reviewMode: false,
           }),
           signal: abortController.signal,
         }
@@ -162,13 +162,42 @@ export function useAIAgent({ projectId, files, selectedFileId }: UseAIAgentOptio
                 setStatus('completed');
                 setCurrentSessionId(null);
 
-                // We do NOT invalidate queries here because it's reviewMode
-                // which means the changes haven't been applied to the DB yet!
+                if (event.affectedFiles?.length > 0) {
+                  queryClient.setQueryData(['project-files', projectId], (oldData: ProjectFile[] | undefined) => {
+                    if (!oldData) return oldData;
+                    const newData = [...oldData];
+                    for (const f of event.affectedFiles) {
+                      if (f.action === 'edit' && f.content !== undefined) {
+                        const index = newData.findIndex(x => x.id === f.id);
+                        if (index !== -1) {
+                          newData[index] = { ...newData[index], content: f.content, updated_at: new Date().toISOString() };
+                        }
+                      } else if (f.action === 'create' && f.id && f.content !== undefined) {
+                        if (!newData.find(x => x.id === f.id)) {
+                          newData.push({
+                            id: f.id,
+                            project_id: projectId!,
+                            name: f.name,
+                            path: f.name,
+                            content: f.content,
+                            is_folder: false,
+                            created_at: new Date().toISOString(),
+                            updated_at: new Date().toISOString(),
+                          });
+                        }
+                      }
+                    }
+                    return newData;
+                  });
+                }
+
+                queryClient.invalidateQueries({ queryKey: ['project-files', projectId] });
+                
                 if (event.affectedFiles?.length > 0) {
                   const fileNames = event.affectedFiles.map((f: AIAffectedFile) =>
                     `${f.action === 'create' ? '✨' : '✏️'} ${f.name}`
                   ).join(', ');
-                  toast.success(`AI proposed changes for: ${fileNames}. Please review!`, {
+                  toast.success(`AI generated and applied changes for: ${fileNames}.`, {
                     duration: 5000,
                   });
                 }
