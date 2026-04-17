@@ -20,12 +20,13 @@ interface ModelConfig {
 
 const MODELS: Record<string, ModelConfig> = {
   "gemini-2.5-flash": { provider: "gemini", modelId: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
-  "gemini-2.0-flash": { provider: "gemini", modelId: "gemini-2.0-flash", label: "Gemini 2.0 Flash" },
-  "qwen3-coder": { provider: "openrouter", modelId: "qwen/qwen3-coder:free", label: "Qwen3 Coder" },
-  "gemma-4-26b": { provider: "openrouter", modelId: "google/gemma-4-26b-a4b-it:free", label: "Gemma 4 26B" },
+  "gemini-1.5-pro": { provider: "gemini", modelId: "gemini-1.5-pro", label: "Gemini 1.5 Pro" },
+  "llama-3-8b": { provider: "openrouter", modelId: "meta-llama/llama-3-8b-instruct:free", label: "Llama 3 8B" },
+  "mistral-7b": { provider: "openrouter", modelId: "mistralai/mistral-7b-instruct:free", label: "Mistral 7B" },
+  "qwen3-coder": { provider: "openrouter", modelId: "qwen/qwen-2.5-coder-32b-instruct:free", label: "Qwen 2.5 Coder 32B" },
 };
 
-const FALLBACK_ORDER = ["gemini-2.0-flash", "qwen3-coder", "gemma-4-26b"];
+const FALLBACK_ORDER = ["gemini-1.5-pro", "gemini-2.5-flash", "qwen3-coder", "llama-3-8b", "mistral-7b"];
 
 const SYSTEM_PROMPT = `You are an expert AI coding assistant integrated into a collaborative IDE. Users give you prompts, and you generate or modify code.
 
@@ -390,7 +391,7 @@ serve(async (req) => {
                 if (updateError) {
                   console.error(`[ai-generate] Failed to update file ${change.file_id}:`, updateError);
                 } else {
-                  affectedFiles.push({ id: change.file_id, name: change.file_name, action: "edit" });
+                  affectedFiles.push({ id: change.file_id, name: change.file_name, action: "edit", content: change.content });
                 }
               } else if (change.action === "create") {
                 const { data: newFile, error: createError } = await supabaseAdmin
@@ -407,7 +408,7 @@ serve(async (req) => {
                 if (createError) {
                   console.error(`[ai-generate] Failed to create file ${change.file_name}:`, createError);
                 } else {
-                  affectedFiles.push({ id: newFile.id, name: change.file_name, action: "create" });
+                  affectedFiles.push({ id: newFile.id, name: change.file_name, action: "create", content: change.content });
                 }
               }
             }
