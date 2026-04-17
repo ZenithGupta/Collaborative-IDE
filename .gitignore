@@ -24,3 +24,7 @@ dist-ssr
 *.sw?
 .env
 
+# Selenium tests
+selenium_tests/.venv/
+selenium_tests/report.html
+.pytest_cache/
